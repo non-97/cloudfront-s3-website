@@ -119,11 +119,6 @@ export class ContentsDeliveryConstruct extends Construct {
       ""
     );
 
-    // Delete CustomOriginConfig
-    cfnDistribution.addPropertyDeletionOverride(
-      "DistributionConfig.Origins.0.CustomOriginConfig"
-    );
-
     // Bucket policy
     props.webSiteBucketConstruct.bucket.addToResourcePolicy(
       new cdk.aws_iam.PolicyStatement({
