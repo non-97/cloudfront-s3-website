@@ -25,16 +25,17 @@ export class ContentsDeliveryConstruct extends Construct {
     super(scope, id);
 
     // CloudFront Function
-    const directoryIndexCF2 = new cdk.aws_cloudfront.Function(
-      this,
-      "DirectoryIndexCF2",
-      {
-        code: cdk.aws_cloudfront.FunctionCode.fromFile({
-          filePath: path.join(__dirname, "../src/cf2/directory-index/index.js"),
-        }),
-        runtime: cdk.aws_cloudfront.FunctionRuntime.JS_2_0,
-      }
-    );
+    const directoryIndexCF2 = props.enableDirectoryIndex
+      ? new cdk.aws_cloudfront.Function(this, "DirectoryIndexCF2", {
+          code: cdk.aws_cloudfront.FunctionCode.fromFile({
+            filePath: path.join(
+              __dirname,
+              "../src/cf2/directory-index/index.js"
+            ),
+          }),
+          runtime: cdk.aws_cloudfront.FunctionRuntime.JS_2_0,
+        })
+      : undefined;
 
     // CloudFront Distribution
     this.distribution = new cdk.aws_cloudfront.Distribution(this, "Default", {
@@ -64,12 +65,14 @@ export class ContentsDeliveryConstruct extends Construct {
           cdk.aws_cloudfront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
         responseHeadersPolicy:
           cdk.aws_cloudfront.ResponseHeadersPolicy.SECURITY_HEADERS,
-        functionAssociations: [
-          {
-            function: directoryIndexCF2,
-            eventType: cdk.aws_cloudfront.FunctionEventType.VIEWER_REQUEST,
-          },
-        ],
+        functionAssociations: directoryIndexCF2
+          ? [
+              {
+                function: directoryIndexCF2,
+                eventType: cdk.aws_cloudfront.FunctionEventType.VIEWER_REQUEST,
+              },
+            ]
+          : undefined,
       },
       httpVersion: cdk.aws_cloudfront.HttpVersion.HTTP2_AND_3,
       priceClass: cdk.aws_cloudfront.PriceClass.PRICE_CLASS_ALL,
@@ -111,9 +114,6 @@ export class ContentsDeliveryConstruct extends Construct {
     );
 
     // Delete OAI
-    // cfnDistribution.addPropertyDeletionOverride(
-    //   "DistributionConfig.Origins.0.S3OriginConfig.OriginAccessIdentity"
-    // );
     cfnDistribution.addPropertyOverride(
       "DistributionConfig.Origins.0.S3OriginConfig.OriginAccessIdentity",
       ""

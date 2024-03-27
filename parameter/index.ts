@@ -21,6 +21,7 @@ export interface CertificateProperty {
 export interface ContentsDeliveryProperty {
   domainName?: string;
   contentsPath?: string;
+  enableDirectoryIndex?: boolean;
 }
 
 export interface WebSiteProperty {
@@ -53,6 +54,7 @@ export const webSiteStackProperty: WebSiteStackProperty = {
     contentsDeliveryProperty: {
       domainName: "www.non-97.net",
       contentsPath: path.join(__dirname, "../lib/src/contents"),
+      enableDirectoryIndex: true,
     },
     allowDeleteBucketAndContents: true,
     accessLog: { lifecycleRules: [{ expirationDays: 365 }] },
