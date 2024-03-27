@@ -1,12 +1,13 @@
 import * as cdk from "aws-cdk-lib";
 import { Construct } from "constructs";
-import { LifecycleRule } from "../../parameter/index";
+import { LifecycleRule, AccessLog } from "../../parameter/index";
 
-export interface BucketConstructProps {
+export interface BucketConstructProps extends AccessLog {
   bucketName?: string;
   lifecycleRules?: LifecycleRule[];
   accessControl?: cdk.aws_s3.BucketAccessControl;
   allowDeleteBucketAndContents?: boolean;
+  s3serverAccessLogBucketConstruct?: BucketConstruct;
 }
 
 export class BucketConstruct extends Construct {
@@ -31,6 +32,8 @@ export class BucketConstruct extends Construct {
         : undefined,
       autoDeleteObjects: props?.allowDeleteBucketAndContents ? true : undefined,
       accessControl: props?.accessControl,
+      serverAccessLogsBucket: props?.s3serverAccessLogBucketConstruct?.bucket,
+      serverAccessLogsPrefix: props?.logFilePrefix,
     });
 
     props?.lifecycleRules?.forEach((lifecycleRule) => {
@@ -46,5 +49,15 @@ export class BucketConstruct extends Construct {
           lifecycleRule.abortIncompleteMultipartUploadAfter,
       });
     });
+
+    if (!props?.s3serverAccessLogBucketConstruct) {
+      return;
+    }
+    const cfnBucket = this.bucket.node.defaultChild as cdk.aws_s3.CfnBucket;
+    cfnBucket.loggingConfiguration = {
+      targetObjectKeyFormat: {
+        partitionedPrefix: { partitionDateSource: "EventTime" },
+      },
+    };
   }
 }

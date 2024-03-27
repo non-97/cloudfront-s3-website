@@ -8,6 +8,12 @@ export interface LifecycleRule {
   abortIncompleteMultipartUploadAfter?: cdk.Duration;
 }
 
+export interface AccessLog {
+  enableAccessLog?: boolean;
+  logFilePrefix?: string;
+  lifecycleRules?: LifecycleRule[];
+}
+
 export interface HostZoneProperty {
   zoneName?: string;
   hostedZoneId?: string;
@@ -29,9 +35,8 @@ export interface WebSiteProperty {
   certificate?: CertificateProperty;
   contentsDeliveryProperty?: ContentsDeliveryProperty;
   allowDeleteBucketAndContents?: boolean;
-  accessLog?: {
-    lifecycleRules?: LifecycleRule[];
-  };
+  s3ServerAccessLog?: AccessLog;
+  cloudFrontAccessLog?: AccessLog;
 }
 
 export interface WebSiteStackProperty {
@@ -57,6 +62,13 @@ export const webSiteStackProperty: WebSiteStackProperty = {
       enableDirectoryIndex: true,
     },
     allowDeleteBucketAndContents: true,
-    accessLog: { lifecycleRules: [{ expirationDays: 365 }] },
+    s3ServerAccessLog: {
+      enableAccessLog: true,
+      lifecycleRules: [{ expirationDays: 365 }],
+    },
+    cloudFrontAccessLog: {
+      enableAccessLog: true,
+      lifecycleRules: [{ expirationDays: 365 }],
+    },
   },
 };

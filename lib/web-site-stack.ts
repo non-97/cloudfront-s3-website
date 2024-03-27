@@ -25,28 +25,39 @@ export class WebSiteStack extends cdk.Stack {
         })
       : undefined;
 
+    const s3serverAccessLogBucketConstruct = props.s3ServerAccessLog
+      ? new BucketConstruct(this, "S3ServerAccessLogBucketConstruct", {
+          allowDeleteBucketAndContents: props.allowDeleteBucketAndContents,
+          accessControl: cdk.aws_s3.BucketAccessControl.LOG_DELIVERY_WRITE,
+          ...props.s3ServerAccessLog,
+        })
+      : undefined;
+
+    const cloudFrontAccessLogBucketConstruct = props.cloudFrontAccessLog
+      ? new BucketConstruct(this, "CloudFrontAccessLogBucketConstruct", {
+          allowDeleteBucketAndContents: props.allowDeleteBucketAndContents,
+          accessControl: cdk.aws_s3.BucketAccessControl.LOG_DELIVERY_WRITE,
+          ...props.cloudFrontAccessLog,
+        })
+      : undefined;
+
     const webSiteBucketConstruct = new BucketConstruct(
       this,
       "WebSiteBucketConstruct",
       {
+        s3serverAccessLogBucketConstruct,
         allowDeleteBucketAndContents: props.allowDeleteBucketAndContents,
+        ...props.s3ServerAccessLog,
       }
     );
 
-    const accessLogBucketConstruct = props.accessLog
-      ? new BucketConstruct(this, "AccessLogBucketConstruct", {
-          ...props.accessLog,
-          allowDeleteBucketAndContents: props.allowDeleteBucketAndContents,
-          accessControl: cdk.aws_s3.BucketAccessControl.LOG_DELIVERY_WRITE,
-        })
-      : undefined;
-
     new ContentsDeliveryConstruct(this, "ContentsDeliveryConstruct", {
       webSiteBucketConstruct,
-      accessLogBucketConstruct,
+      cloudFrontAccessLogBucketConstruct,
       hostedZoneConstruct,
       certificateConstruct,
       ...props.contentsDeliveryProperty,
+      ...props.cloudFrontAccessLog,
     });
   }
 }

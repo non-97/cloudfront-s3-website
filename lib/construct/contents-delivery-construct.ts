@@ -1,15 +1,16 @@
 import * as cdk from "aws-cdk-lib";
 import { Construct } from "constructs";
-import { ContentsDeliveryProperty } from "../../parameter/index";
+import { ContentsDeliveryProperty, AccessLog } from "../../parameter/index";
 import { BucketConstruct } from "./bucket-construct";
 import { HostedZoneConstruct } from "./hosted-zone-construct";
 import { CertificateConstruct } from "./certificate-construct";
 import * as path from "path";
 
 export interface ContentsDeliveryConstructProps
-  extends ContentsDeliveryProperty {
+  extends ContentsDeliveryProperty,
+    AccessLog {
   webSiteBucketConstruct: BucketConstruct;
-  accessLogBucketConstruct?: BucketConstruct;
+  cloudFrontAccessLogBucketConstruct?: BucketConstruct;
   hostedZoneConstruct?: HostedZoneConstruct;
   certificateConstruct?: CertificateConstruct;
 }
@@ -80,7 +81,8 @@ export class ContentsDeliveryConstruct extends Construct {
       certificate: props.domainName
         ? props.certificateConstruct?.certificate
         : undefined,
-      logBucket: props.accessLogBucketConstruct?.bucket,
+      logBucket: props.cloudFrontAccessLogBucketConstruct?.bucket,
+      logFilePrefix: props.logFilePrefix,
     });
 
     // OAC
