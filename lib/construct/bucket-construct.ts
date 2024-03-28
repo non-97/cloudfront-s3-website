@@ -6,7 +6,7 @@ export interface BucketConstructProps extends AccessLog {
   bucketName?: string;
   lifecycleRules?: LifecycleRule[];
   accessControl?: cdk.aws_s3.BucketAccessControl;
-  allowDeleteBucketAndContents?: boolean;
+  allowDeleteBucketAndObjects?: boolean;
   s3serverAccessLogBucketConstruct?: BucketConstruct;
 }
 
@@ -27,10 +27,10 @@ export class BucketConstruct extends Construct {
       }),
       enforceSSL: true,
       versioned: false,
-      removalPolicy: props?.allowDeleteBucketAndContents
+      removalPolicy: props?.allowDeleteBucketAndObjects
         ? cdk.RemovalPolicy.DESTROY
         : undefined,
-      autoDeleteObjects: props?.allowDeleteBucketAndContents ? true : undefined,
+      autoDeleteObjects: props?.allowDeleteBucketAndObjects ? true : undefined,
       accessControl: props?.accessControl,
       serverAccessLogsBucket: props?.s3serverAccessLogBucketConstruct?.bucket,
       serverAccessLogsPrefix: props?.logFilePrefix,

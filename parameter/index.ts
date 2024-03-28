@@ -33,8 +33,8 @@ export interface ContentsDeliveryProperty {
 export interface WebSiteProperty {
   hostedZone?: HostZoneProperty;
   certificate?: CertificateProperty;
-  contentsDeliveryProperty?: ContentsDeliveryProperty;
-  allowDeleteBucketAndContents?: boolean;
+  contentsDelivery?: ContentsDeliveryProperty;
+  allowDeleteBucketAndObjects?: boolean;
   s3ServerAccessLog?: AccessLog;
   cloudFrontAccessLog?: AccessLog;
 }
@@ -56,12 +56,12 @@ export const webSiteStackProperty: WebSiteStackProperty = {
     certificate: {
       certificateDomainName: "www.non-97.net",
     },
-    contentsDeliveryProperty: {
+    contentsDelivery: {
       domainName: "www.non-97.net",
       contentsPath: path.join(__dirname, "../lib/src/contents"),
       enableDirectoryIndex: true,
     },
-    allowDeleteBucketAndContents: true,
+    allowDeleteBucketAndObjects: true,
     s3ServerAccessLog: {
       enableAccessLog: true,
       lifecycleRules: [{ expirationDays: 365 }],
