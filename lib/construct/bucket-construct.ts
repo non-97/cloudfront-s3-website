@@ -7,7 +7,7 @@ export interface BucketConstructProps extends AccessLog {
   lifecycleRules?: LifecycleRule[];
   accessControl?: cdk.aws_s3.BucketAccessControl;
   allowDeleteBucketAndObjects?: boolean;
-  s3serverAccessLogBucketConstruct?: BucketConstruct;
+  s3ServerAccessLogBucketConstruct?: BucketConstruct;
 }
 
 export class BucketConstruct extends Construct {
@@ -32,7 +32,7 @@ export class BucketConstruct extends Construct {
         : undefined,
       autoDeleteObjects: props?.allowDeleteBucketAndObjects ? true : undefined,
       accessControl: props?.accessControl,
-      serverAccessLogsBucket: props?.s3serverAccessLogBucketConstruct?.bucket,
+      serverAccessLogsBucket: props?.s3ServerAccessLogBucketConstruct?.bucket,
       serverAccessLogsPrefix: props?.logFilePrefix,
     });
 
@@ -50,7 +50,7 @@ export class BucketConstruct extends Construct {
       });
     });
 
-    if (!props?.s3serverAccessLogBucketConstruct) {
+    if (!props?.s3ServerAccessLogBucketConstruct) {
       return;
     }
     const cfnBucket = this.bucket.node.defaultChild as cdk.aws_s3.CfnBucket;
