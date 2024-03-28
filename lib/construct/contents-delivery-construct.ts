@@ -26,17 +26,53 @@ export class ContentsDeliveryConstruct extends Construct {
     super(scope, id);
 
     // CloudFront Function
-    const directoryIndexCF2 = props.enableDirectoryIndex
-      ? new cdk.aws_cloudfront.Function(this, "DirectoryIndexCF2", {
-          code: cdk.aws_cloudfront.FunctionCode.fromFile({
-            filePath: path.join(
-              __dirname,
-              "../src/cf2/directory-index/index.js"
-            ),
-          }),
-          runtime: cdk.aws_cloudfront.FunctionRuntime.JS_2_0,
-        })
-      : undefined;
+    const directoryIndexCF2 =
+      props.enableDirectoryIndex === "cf2"
+        ? new cdk.aws_cloudfront.Function(this, "DirectoryIndexCF2", {
+            code: cdk.aws_cloudfront.FunctionCode.fromFile({
+              filePath: path.join(
+                __dirname,
+                "../src/cf2/directory-index/index.js"
+              ),
+            }),
+            runtime: cdk.aws_cloudfront.FunctionRuntime.JS_2_0,
+          })
+        : undefined;
+
+    // Lambda@Edge
+    const directoryIndexLambdaEdge =
+      props.enableDirectoryIndex === "lambdaEdge"
+        ? new cdk.aws_lambda_nodejs.NodejsFunction(
+            this,
+            "DirectoryIndexLambdaEdge",
+            {
+              entry: path.join(
+                __dirname,
+                "../src/lambda/directory-index/index.ts"
+              ),
+              runtime: cdk.aws_lambda.Runtime.NODEJS_20_X,
+              bundling: {
+                minify: true,
+                tsconfig: path.join(__dirname, "../src/lambda/tsconfig.json"),
+                format: cdk.aws_lambda_nodejs.OutputFormat.ESM,
+              },
+              awsSdkConnectionReuse: false,
+              architecture: cdk.aws_lambda.Architecture.X86_64,
+              timeout: cdk.Duration.seconds(5),
+              role: new cdk.aws_iam.Role(this, "LambdaEdgeExecutionRole", {
+                assumedBy: new cdk.aws_iam.CompositePrincipal(
+                  new cdk.aws_iam.ServicePrincipal("lambda.amazonaws.com"),
+                  new cdk.aws_iam.ServicePrincipal("edgelambda.amazonaws.com")
+                ),
+                managedPolicies: [
+                  cdk.aws_iam.ManagedPolicy.fromAwsManagedPolicyName(
+                    "service-role/AWSLambdaBasicExecutionRole"
+                  ),
+                ],
+              }),
+            }
+          )
+        : undefined;
 
     // CloudFront Distribution
     this.distribution = new cdk.aws_cloudfront.Distribution(this, "Default", {
@@ -61,7 +97,7 @@ export class ContentsDeliveryConstruct extends Construct {
         ),
         allowedMethods: cdk.aws_cloudfront.AllowedMethods.ALLOW_GET_HEAD,
         cachedMethods: cdk.aws_cloudfront.CachedMethods.CACHE_GET_HEAD,
-        cachePolicy: cdk.aws_cloudfront.CachePolicy.CACHING_DISABLED,
+        cachePolicy: cdk.aws_cloudfront.CachePolicy.CACHING_OPTIMIZED,
         viewerProtocolPolicy:
           cdk.aws_cloudfront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
         responseHeadersPolicy:
@@ -71,6 +107,15 @@ export class ContentsDeliveryConstruct extends Construct {
               {
                 function: directoryIndexCF2,
                 eventType: cdk.aws_cloudfront.FunctionEventType.VIEWER_REQUEST,
+              },
+            ]
+          : undefined,
+        edgeLambdas: directoryIndexLambdaEdge
+          ? [
+              {
+                functionVersion: directoryIndexLambdaEdge.currentVersion,
+                eventType:
+                  cdk.aws_cloudfront.LambdaEdgeEventType.ORIGIN_REQUEST,
               },
             ]
           : undefined,

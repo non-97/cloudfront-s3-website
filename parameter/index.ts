@@ -27,7 +27,7 @@ export interface CertificateProperty {
 export interface ContentsDeliveryProperty {
   domainName?: string;
   contentsPath?: string;
-  enableDirectoryIndex?: boolean;
+  enableDirectoryIndex?: "cf2" | "lambdaEdge" | false;
 }
 
 export interface WebSiteProperty {
@@ -59,7 +59,7 @@ export const webSiteStackProperty: WebSiteStackProperty = {
     contentsDelivery: {
       domainName: "www.non-97.net",
       contentsPath: path.join(__dirname, "../lib/src/contents"),
-      enableDirectoryIndex: true,
+      enableDirectoryIndex: "lambdaEdge",
     },
     allowDeleteBucketAndObjects: true,
     s3ServerAccessLog: {
