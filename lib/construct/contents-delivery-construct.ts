@@ -9,7 +9,7 @@ import * as path from "path";
 export interface ContentsDeliveryConstructProps
   extends ContentsDeliveryProperty,
     AccessLog {
-  webSiteBucketConstruct: BucketConstruct;
+  websiteBucketConstruct: BucketConstruct;
   cloudFrontAccessLogBucketConstruct?: BucketConstruct;
   hostedZoneConstruct?: HostedZoneConstruct;
   certificateConstruct?: CertificateConstruct;
@@ -93,7 +93,7 @@ export class ContentsDeliveryConstruct extends Construct {
       ],
       defaultBehavior: {
         origin: new cdk.aws_cloudfront_origins.S3Origin(
-          props.webSiteBucketConstruct.bucket
+          props.websiteBucketConstruct.bucket
         ),
         allowedMethods: cdk.aws_cloudfront.AllowedMethods.ALLOW_GET_HEAD,
         cachedMethods: cdk.aws_cloudfront.CachedMethods.CACHE_GET_HEAD,
@@ -157,7 +157,7 @@ export class ContentsDeliveryConstruct extends Construct {
     // Set S3 domain name
     cfnDistribution.addPropertyOverride(
       "DistributionConfig.Origins.0.DomainName",
-      props.webSiteBucketConstruct.bucket.bucketRegionalDomainName
+      props.websiteBucketConstruct.bucket.bucketRegionalDomainName
     );
 
     // Delete OAI
@@ -167,7 +167,7 @@ export class ContentsDeliveryConstruct extends Construct {
     );
 
     // Bucket policy
-    props.webSiteBucketConstruct.bucket.addToResourcePolicy(
+    props.websiteBucketConstruct.bucket.addToResourcePolicy(
       new cdk.aws_iam.PolicyStatement({
         actions: props.enableS3ListBucket
           ? ["s3:GetObject", "s3:ListBucket"]
@@ -178,10 +178,10 @@ export class ContentsDeliveryConstruct extends Construct {
         ],
         resources: props.enableS3ListBucket
           ? [
-              `${props.webSiteBucketConstruct.bucket.bucketArn}/*`,
-              props.webSiteBucketConstruct.bucket.bucketArn,
+              `${props.websiteBucketConstruct.bucket.bucketArn}/*`,
+              props.websiteBucketConstruct.bucket.bucketArn,
             ]
-          : [`${props.webSiteBucketConstruct.bucket.bucketArn}/*`],
+          : [`${props.websiteBucketConstruct.bucket.bucketArn}/*`],
         conditions: {
           StringEquals: {
             "AWS:SourceArn": `arn:aws:cloudfront::${
@@ -209,7 +209,7 @@ export class ContentsDeliveryConstruct extends Construct {
     }
     new cdk.aws_s3_deployment.BucketDeployment(this, "DeployContents", {
       sources: [cdk.aws_s3_deployment.Source.asset(props.contentsPath)],
-      destinationBucket: props.webSiteBucketConstruct.bucket,
+      destinationBucket: props.websiteBucketConstruct.bucket,
       distribution: this.distribution,
       distributionPaths: ["/*"],
     });

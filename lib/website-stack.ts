@@ -1,15 +1,15 @@
 import * as cdk from "aws-cdk-lib";
 import { Construct } from "constructs";
-import { WebSiteProperty } from "../parameter/index";
+import { WebsiteProperty } from "../parameter/index";
 import { HostedZoneConstruct } from "./construct/hosted-zone-construct";
 import { CertificateConstruct } from "./construct/certificate-construct";
 import { BucketConstruct } from "./construct/bucket-construct";
 import { ContentsDeliveryConstruct as ContentsDeliveryConstruct } from "./construct/contents-delivery-construct";
 
-export interface WebSiteStackProps extends cdk.StackProps, WebSiteProperty {}
+export interface WebsiteStackProps extends cdk.StackProps, WebsiteProperty {}
 
-export class WebSiteStack extends cdk.Stack {
-  constructor(scope: Construct, id: string, props: WebSiteStackProps) {
+export class WebsiteStack extends cdk.Stack {
+  constructor(scope: Construct, id: string, props: WebsiteStackProps) {
     super(scope, id, props);
 
     // Public Hosted Zone
@@ -46,9 +46,9 @@ export class WebSiteStack extends cdk.Stack {
       : undefined;
 
     // Bucket for Website contents
-    const webSiteBucketConstruct = new BucketConstruct(
+    const websiteBucketConstruct = new BucketConstruct(
       this,
-      "WebSiteBucketConstruct",
+      "WebsiteBucketConstruct",
       {
         s3ServerAccessLogBucketConstruct: s3serverAccessLogBucketConstruct,
         allowDeleteBucketAndObjects: props.allowDeleteBucketAndObjects,
@@ -57,7 +57,7 @@ export class WebSiteStack extends cdk.Stack {
 
     // CloudFront
     new ContentsDeliveryConstruct(this, "ContentsDeliveryConstruct", {
-      webSiteBucketConstruct,
+      websiteBucketConstruct: websiteBucketConstruct,
       cloudFrontAccessLogBucketConstruct,
       hostedZoneConstruct,
       certificateConstruct,

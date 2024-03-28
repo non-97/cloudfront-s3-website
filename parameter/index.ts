@@ -31,7 +31,7 @@ export interface ContentsDeliveryProperty {
   enableS3ListBucket?: boolean;
 }
 
-export interface WebSiteProperty {
+export interface WebsiteProperty {
   hostedZone?: HostZoneProperty;
   certificate?: CertificateProperty;
   contentsDelivery?: ContentsDeliveryProperty;
@@ -42,10 +42,10 @@ export interface WebSiteProperty {
 
 export interface WebSiteStackProperty {
   env?: cdk.Environment;
-  props: WebSiteProperty;
+  props: WebsiteProperty;
 }
 
-export const webSiteStackProperty: WebSiteStackProperty = {
+export const websiteStackProperty: WebSiteStackProperty = {
   env: {
     account: process.env.CDK_DEFAULT_ACCOUNT,
     region: process.env.CDK_DEFAULT_REGION,
@@ -60,7 +60,7 @@ export const webSiteStackProperty: WebSiteStackProperty = {
     contentsDelivery: {
       domainName: "www.non-97.net",
       contentsPath: path.join(__dirname, "../lib/src/contents"),
-      enableDirectoryIndex: "lambdaEdge",
+      enableDirectoryIndex: "cf2",
       enableS3ListBucket: true,
     },
     allowDeleteBucketAndObjects: true,
