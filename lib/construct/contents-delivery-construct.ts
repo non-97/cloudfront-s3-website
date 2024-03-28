@@ -169,12 +169,19 @@ export class ContentsDeliveryConstruct extends Construct {
     // Bucket policy
     props.webSiteBucketConstruct.bucket.addToResourcePolicy(
       new cdk.aws_iam.PolicyStatement({
-        actions: ["s3:GetObject"],
+        actions: props.enableS3ListBucket
+          ? ["s3:GetObject", "s3:ListBucket"]
+          : ["s3:GetObject"],
         effect: cdk.aws_iam.Effect.ALLOW,
         principals: [
           new cdk.aws_iam.ServicePrincipal("cloudfront.amazonaws.com"),
         ],
-        resources: [`${props.webSiteBucketConstruct.bucket.bucketArn}/*`],
+        resources: props.enableS3ListBucket
+          ? [
+              `${props.webSiteBucketConstruct.bucket.bucketArn}/*`,
+              props.webSiteBucketConstruct.bucket.bucketArn,
+            ]
+          : [`${props.webSiteBucketConstruct.bucket.bucketArn}/*`],
         conditions: {
           StringEquals: {
             "AWS:SourceArn": `arn:aws:cloudfront::${
