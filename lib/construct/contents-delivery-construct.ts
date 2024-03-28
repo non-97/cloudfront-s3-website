@@ -187,7 +187,7 @@ export class ContentsDeliveryConstruct extends Construct {
 
     // RRset
     if (props.hostedZoneConstruct) {
-      new cdk.aws_route53.ARecord(this, `RRset`, {
+      new cdk.aws_route53.ARecord(this, `AliasRecord`, {
         recordName: props.domainName,
         zone: props.hostedZoneConstruct.hostedZone,
         target: cdk.aws_route53.RecordTarget.fromAlias(
@@ -200,7 +200,7 @@ export class ContentsDeliveryConstruct extends Construct {
     if (!props.contentsPath) {
       return;
     }
-    new cdk.aws_s3_deployment.BucketDeployment(this, "ContentsDeploy", {
+    new cdk.aws_s3_deployment.BucketDeployment(this, "DeployContents", {
       sources: [cdk.aws_s3_deployment.Source.asset(props.contentsPath)],
       destinationBucket: props.webSiteBucketConstruct.bucket,
       distribution: this.distribution,
