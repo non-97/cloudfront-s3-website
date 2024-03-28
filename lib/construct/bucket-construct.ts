@@ -54,10 +54,9 @@ export class BucketConstruct extends Construct {
       return;
     }
     const cfnBucket = this.bucket.node.defaultChild as cdk.aws_s3.CfnBucket;
-    cfnBucket.loggingConfiguration = {
-      targetObjectKeyFormat: {
-        partitionedPrefix: { partitionDateSource: "EventTime" },
-      },
-    };
+    cfnBucket.addPropertyOverride(
+      "LoggingConfiguration.TargetObjectKeyFormat.PartitionedPrefix.PartitionDateSource",
+      "EventTime"
+    );
   }
 }
