@@ -47,7 +47,6 @@ export class WebSiteStack extends cdk.Stack {
       {
         s3serverAccessLogBucketConstruct,
         allowDeleteBucketAndObjects: props.allowDeleteBucketAndObjects,
-        ...props.s3ServerAccessLog,
       }
     );
 
