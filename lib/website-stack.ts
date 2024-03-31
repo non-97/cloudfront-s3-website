@@ -57,14 +57,19 @@ export class WebsiteStack extends cdk.Stack {
     );
 
     // CloudFront
-    new ContentsDeliveryConstruct(this, "ContentsDeliveryConstruct", {
-      websiteBucketConstruct: websiteBucketConstruct,
-      cloudFrontAccessLogBucketConstruct,
-      hostedZoneConstruct,
-      certificateConstruct,
-      ...props.contentsDelivery,
-      ...props.cloudFrontAccessLog,
-    });
+    const contentsDeliveryConstruct = new ContentsDeliveryConstruct(
+      this,
+      "ContentsDeliveryConstruct",
+      {
+        websiteBucketConstruct: websiteBucketConstruct,
+        cloudFrontAccessLogBucketConstruct,
+        hostedZoneConstruct,
+        certificateConstruct,
+        ...props.contentsDelivery,
+        ...props.cloudFrontAccessLog,
+        ...props.logAnalytics,
+      }
+    );
 
     // Log Analytics
     // Athena query output
@@ -97,14 +102,32 @@ export class WebsiteStack extends cdk.Stack {
       database
         ? logAnalyticsConstruct?.createTable({
             scope: this,
-            id: "S3ServerAccessLogTabel",
+            id: "S3ServerAccessLogTable",
             databaseName: database.ref,
             logType: "s3ServerAccessLog",
-            logBucketName: s3serverAccessLogBucketConstruct?.bucket.bucketName,
+            logBucketName: s3serverAccessLogBucketConstruct.bucket.bucketName,
             logSrcResourceId: websiteBucketConstruct.bucket.bucketName,
             logSrcResourceAccountId: this.account,
             logSrcResourceRegion: this.region,
             logFilePrefix: props.s3ServerAccessLog?.logFilePrefix,
+          })
+        : undefined;
+    }
+
+    // CloudFront Access Log Table
+    if (cloudFrontAccessLogBucketConstruct) {
+      database
+        ? logAnalyticsConstruct?.createTable({
+            scope: this,
+            id: "CloudFrontAccessLogTable",
+            databaseName: database.ref,
+            logType: "cloudFrontAccessLog",
+            logBucketName: cloudFrontAccessLogBucketConstruct.bucket.bucketName,
+            logSrcResourceId:
+              contentsDeliveryConstruct.distribution.distributionId,
+            logSrcResourceAccountId: this.account,
+            logSrcResourceRegion: this.region,
+            logFilePrefix: props.cloudFrontAccessLog?.logFilePrefix,
           })
         : undefined;
     }

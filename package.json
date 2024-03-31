@@ -22,6 +22,7 @@
     "typescript": "~5.4.3"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.540.0",
     "aws-cdk-lib": "2.134.0",
     "constructs": "^10.0.0",
     "source-map-support": "^0.5.21"

@@ -79,8 +79,76 @@ const s3ServerAccessLog: LogTable = {
       },
     },
     parameters: {
-      "skip.header.line.count": "1",
       has_encrypted_data: true,
+      "projection.enabled": true,
+      "projection.date.type": "date",
+      "projection.date.interval": "1",
+      "projection.date.interval.unit": "DAYS",
+      "projection.date.range": "NOW-1YEARS, NOW+9HOUR",
+      "projection.date.format": "yyyy/MM/dd",
+    },
+    partitionKeys: [{ name: "date", type: "string" }],
+  },
+};
+
+const cloudFrontAccessLog: LogTable = {
+  location:
+    "s3://#{logBucketName}/#{prefix}partitioned/#{logSrcResourceAccountId}/#{logSrcResourceRegion}/#{logSrcResourceId}",
+  storageLocationTemplate: "#{location}/${date}",
+  tableInput: {
+    name: "cloudfront_access_log",
+    tableType: "EXTERNAL_TABLE",
+    storageDescriptor: {
+      columns: [
+        { name: "log_date", type: "date" },
+        { name: "time", type: "string" },
+        { name: "x_edge_location", type: "string" },
+        { name: "sc_bytes", type: "bigint" },
+        { name: "c_ip", type: "string" },
+        { name: "cs_method", type: "string" },
+        { name: "cs_host", type: "string" },
+        { name: "cs_uri_stem", type: "string" },
+        { name: "sc_status", type: "int" },
+        { name: "cs_referer", type: "string" },
+        { name: "cs_user_agent", type: "string" },
+        { name: "cs_uri_query", type: "string" },
+        { name: "cs_cookie", type: "string" },
+        { name: "x_edge_result_type", type: "string" },
+        { name: "x_edge_request_id", type: "string" },
+        { name: "x_host_header", type: "string" },
+        { name: "cs_protocol", type: "string" },
+        { name: "cs_bytes", type: "bigint" },
+        { name: "time_taken", type: "float" },
+        { name: "x_forwarded_for", type: "string" },
+        { name: "ssl_protocol", type: "string" },
+        { name: "ssl_cipher", type: "string" },
+        { name: "x_edge_response_result_type", type: "string" },
+        { name: "cs_protocol_version", type: "string" },
+        { name: "fle_status", type: "string" },
+        { name: "fle_encrypted_fields", type: "string" },
+        { name: "c_port", type: "int" },
+        { name: "time_to_first_byte", type: "float" },
+        { name: "x_edge_detailed_result_type", type: "string" },
+        { name: "sc_content_type", type: "string" },
+        { name: "sc_content_len", type: "bigint" },
+        { name: "sc_range_start", type: "bigint" },
+        { name: "sc_range_end", type: "bigint" },
+      ],
+      inputFormat: "org.apache.hadoop.mapred.TextInputFormat",
+      outputFormat:
+        "org.apache.hadoop.hive.ql.io.HiveIgnoreKeyTextOutputFormat",
+      serdeInfo: {
+        serializationLibrary:
+          "org.apache.hadoop.hive.serde2.lazy.LazySimpleSerDe",
+        parameters: {
+          "field.delim": "\t",
+          "serialization.format": "\t",
+        },
+      },
+    },
+    parameters: {
+      has_encrypted_data: true,
+      "skip.header.line.count": "2",
       "projection.enabled": true,
       "projection.date.type": "date",
       "projection.date.interval": "1",
@@ -94,6 +162,7 @@ const s3ServerAccessLog: LogTable = {
 
 const logTables: LogTables = {
   s3ServerAccessLog,
+  cloudFrontAccessLog,
 };
 
 export interface LogAnalyticsConstructProps extends LogAnalytics {
