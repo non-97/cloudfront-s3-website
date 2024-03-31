@@ -100,9 +100,10 @@ export class WebsiteStack extends cdk.Stack {
             id: "S3ServerAccessLogTabel",
             databaseName: database.ref,
             logType: "s3ServerAccessLog",
-            logDstBucketName:
-              s3serverAccessLogBucketConstruct?.bucket.bucketName,
-            logSrcBucketName: websiteBucketConstruct.bucket.bucketName,
+            logBucketName: s3serverAccessLogBucketConstruct?.bucket.bucketName,
+            logSrcResourceId: websiteBucketConstruct.bucket.bucketName,
+            logSrcResourceAccountId: this.account,
+            logSrcResourceRegion: this.region,
             logFilePrefix: props.s3ServerAccessLog?.logFilePrefix,
           })
         : undefined;

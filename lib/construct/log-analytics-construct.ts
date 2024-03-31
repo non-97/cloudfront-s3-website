@@ -24,14 +24,16 @@ interface CreateTableProperty {
   id: string;
   databaseName: string;
   logType: LogType;
-  logDstBucketName: string;
-  logSrcBucketName: string;
+  logBucketName: string;
+  logSrcResourceId: string;
+  logSrcResourceAccountId: string;
+  logSrcResourceRegion: string;
   logFilePrefix?: string;
 }
 
 const s3ServerAccessLog: LogTable = {
   location:
-    "s3://#{logDstBucketName}/#{prefix}#{accountId}/#{region}/#{logSrcBucketName}",
+    "s3://#{logBucketName}/#{prefix}#{logSrcResourceAccountId}/#{logSrcResourceRegion}/#{logSrcResourceId}",
   storageLocationTemplate: "#{location}/${date}",
   tableInput: {
     name: "s3_server_access_log",
@@ -137,18 +139,16 @@ export class LogAnalyticsConstruct extends Construct {
   };
 
   public createTable = (props: CreateTableProperty) => {
-    const accountId = cdk.Stack.of(props.scope).account;
-    const region = cdk.Stack.of(props.scope).region;
     const prefix = props.logFilePrefix ? `${props.logFilePrefix}/` : "";
 
     const logTable = logTables[props.logType];
     const tableInput = logTable.tableInput;
     const location = logTable.location
-      .replace("#{logDstBucketName}", props.logDstBucketName)
+      .replace("#{logBucketName}", props.logBucketName)
       .replace("#{prefix}", prefix)
-      .replace("#{accountId}", accountId)
-      .replace("#{region}", region)
-      .replace("#{logSrcBucketName}", props.logSrcBucketName);
+      .replace("#{logSrcResourceAccountId}", props.logSrcResourceAccountId)
+      .replace("#{logSrcResourceRegion}", props.logSrcResourceRegion)
+      .replace("#{logSrcResourceId}", props.logSrcResourceId);
     const storageLocationTemplate = logTable.storageLocationTemplate?.replace(
       "#{location}",
       location
