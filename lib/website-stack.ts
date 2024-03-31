@@ -1,10 +1,11 @@
 import * as cdk from "aws-cdk-lib";
 import { Construct } from "constructs";
-import { WebsiteProperty } from "../parameter/index";
+import { WebsiteProperty, LogType } from "../parameter/index";
 import { HostedZoneConstruct } from "./construct/hosted-zone-construct";
 import { CertificateConstruct } from "./construct/certificate-construct";
 import { BucketConstruct } from "./construct/bucket-construct";
-import { ContentsDeliveryConstruct as ContentsDeliveryConstruct } from "./construct/contents-delivery-construct";
+import { ContentsDeliveryConstruct } from "./construct/contents-delivery-construct";
+import { LogAnalyticsConstruct } from "./construct/log-analytics-construct";
 
 export interface WebsiteStackProps extends cdk.StackProps, WebsiteProperty {}
 
@@ -64,5 +65,47 @@ export class WebsiteStack extends cdk.Stack {
       ...props.contentsDelivery,
       ...props.cloudFrontAccessLog,
     });
+
+    // Log Analytics
+    // Athena query output
+    const queryOutputBucketConstruct = props.logAnalytics?.createWorkGroup
+      ? new BucketConstruct(this, "QueryOutputBucketConstruct", {
+          allowDeleteBucketAndObjects: props.allowDeleteBucketAndObjects,
+        })
+      : undefined;
+
+    const logAnalyticsConstruct = props.logAnalytics
+      ? new LogAnalyticsConstruct(this, "LogAnalyticsConstruct", {
+          queryOutputBucketConstruct,
+        })
+      : undefined;
+
+    // Database
+    if (!logAnalyticsConstruct) {
+      return;
+    }
+    const database = props.logAnalytics?.enableLogAnalytics
+      ? logAnalyticsConstruct?.createDatabase({
+          scope: this,
+          id: "AccessLogDatabase",
+          databaseName: "access_log",
+        })
+      : undefined;
+
+    // S3 Server Access Log Table
+    if (s3serverAccessLogBucketConstruct) {
+      database
+        ? logAnalyticsConstruct?.createTable({
+            scope: this,
+            id: "S3ServerAccessLogTabel",
+            databaseName: database.ref,
+            logType: "s3ServerAccessLog",
+            logDstBucketName:
+              s3serverAccessLogBucketConstruct?.bucket.bucketName,
+            logSrcBucketName: websiteBucketConstruct.bucket.bucketName,
+            logFilePrefix: props.s3ServerAccessLog?.logFilePrefix,
+          })
+        : undefined;
+    }
   }
 }

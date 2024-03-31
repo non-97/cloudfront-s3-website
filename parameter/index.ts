@@ -1,11 +1,18 @@
 import * as cdk from "aws-cdk-lib";
 import * as path from "path";
 
+export type LogType = "s3ServerAccessLog";
+
 export interface LifecycleRule {
   prefix?: string;
   expirationDays: number;
   ruleNameSuffix?: string;
   abortIncompleteMultipartUploadAfter?: cdk.Duration;
+}
+
+export interface LogAnalytics {
+  createWorkGroup?: boolean;
+  enableLogAnalytics?: LogType[];
 }
 
 export interface AccessLog {
@@ -38,6 +45,7 @@ export interface WebsiteProperty {
   allowDeleteBucketAndObjects?: boolean;
   s3ServerAccessLog?: AccessLog;
   cloudFrontAccessLog?: AccessLog;
+  logAnalytics?: LogAnalytics;
 }
 
 export interface WebSiteStackProperty {
@@ -51,16 +59,16 @@ export const websiteStackProperty: WebSiteStackProperty = {
     region: process.env.CDK_DEFAULT_REGION,
   },
   props: {
-    hostedZone: {
-      zoneName: "www.non-97.net",
-    },
-    certificate: {
-      certificateDomainName: "www.non-97.net",
-    },
+    // hostedZone: {
+    //   zoneName: "www.non-97.net",
+    // },
+    // certificate: {
+    //   certificateDomainName: "www.non-97.net",
+    // },
     contentsDelivery: {
-      domainName: "www.non-97.net",
+      // domainName: "www.non-97.net",
       contentsPath: path.join(__dirname, "../lib/src/contents"),
-      enableDirectoryIndex: "cf2",
+      // enableDirectoryIndex: "cf2",
       enableS3ListBucket: true,
     },
     allowDeleteBucketAndObjects: true,
@@ -68,9 +76,13 @@ export const websiteStackProperty: WebSiteStackProperty = {
       enableAccessLog: true,
       lifecycleRules: [{ expirationDays: 365 }],
     },
-    cloudFrontAccessLog: {
-      enableAccessLog: true,
-      lifecycleRules: [{ expirationDays: 365 }],
+    // cloudFrontAccessLog: {
+    //   enableAccessLog: true,
+    //   lifecycleRules: [{ expirationDays: 365 }],
+    // },
+    logAnalytics: {
+      createWorkGroup: true,
+      enableLogAnalytics: ["s3ServerAccessLog", "s3ServerAccessLog"],
     },
   },
 };
