@@ -30,6 +30,7 @@ export class WebsiteStack extends cdk.Stack {
 
     // Bucket for S3 Server Access Log
     const s3serverAccessLogBucketConstruct = props.s3ServerAccessLog
+      ?.enableAccessLog
       ? new BucketConstruct(this, "S3ServerAccessLogBucketConstruct", {
           allowDeleteBucketAndObjects: props.allowDeleteBucketAndObjects,
           accessControl: cdk.aws_s3.BucketAccessControl.LOG_DELIVERY_WRITE,
@@ -39,6 +40,7 @@ export class WebsiteStack extends cdk.Stack {
 
     // Bucket for CloudFront Access Log
     const cloudFrontAccessLogBucketConstruct = props.cloudFrontAccessLog
+      ?.enableAccessLog
       ? new BucketConstruct(this, "CloudFrontAccessLogBucketConstruct", {
           allowDeleteBucketAndObjects: props.allowDeleteBucketAndObjects,
           accessControl: cdk.aws_s3.BucketAccessControl.LOG_DELIVERY_WRITE,
@@ -53,6 +55,7 @@ export class WebsiteStack extends cdk.Stack {
       {
         s3ServerAccessLogBucketConstruct: s3serverAccessLogBucketConstruct,
         allowDeleteBucketAndObjects: props.allowDeleteBucketAndObjects,
+        logFilePrefix: props.s3ServerAccessLog?.logFilePrefix,
       }
     );
 

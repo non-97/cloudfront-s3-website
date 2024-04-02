@@ -33,7 +33,10 @@ export class BucketConstruct extends Construct {
       autoDeleteObjects: props?.allowDeleteBucketAndObjects ? true : undefined,
       accessControl: props?.accessControl,
       serverAccessLogsBucket: props?.s3ServerAccessLogBucketConstruct?.bucket,
-      serverAccessLogsPrefix: props?.logFilePrefix,
+      serverAccessLogsPrefix:
+        props?.s3ServerAccessLogBucketConstruct?.bucket && props?.logFilePrefix
+          ? `${props?.logFilePrefix}/`
+          : undefined,
     });
 
     props?.lifecycleRules?.forEach((lifecycleRule) => {
