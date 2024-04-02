@@ -1,11 +1,18 @@
 import * as cdk from "aws-cdk-lib";
 import * as path from "path";
 
+export type LogType = "s3ServerAccessLog" | "cloudFrontAccessLog";
+
 export interface LifecycleRule {
   prefix?: string;
   expirationDays: number;
   ruleNameSuffix?: string;
   abortIncompleteMultipartUploadAfter?: cdk.Duration;
+}
+
+export interface LogAnalytics {
+  createWorkGroup?: boolean;
+  enableLogAnalytics?: LogType[];
 }
 
 export interface AccessLog {
@@ -38,6 +45,7 @@ export interface WebsiteProperty {
   allowDeleteBucketAndObjects?: boolean;
   s3ServerAccessLog?: AccessLog;
   cloudFrontAccessLog?: AccessLog;
+  logAnalytics?: LogAnalytics;
 }
 
 export interface WebSiteStackProperty {
@@ -71,6 +79,10 @@ export const websiteStackProperty: WebSiteStackProperty = {
     cloudFrontAccessLog: {
       enableAccessLog: true,
       lifecycleRules: [{ expirationDays: 365 }],
+    },
+    logAnalytics: {
+      createWorkGroup: true,
+      enableLogAnalytics: ["s3ServerAccessLog", "cloudFrontAccessLog"],
     },
   },
 };

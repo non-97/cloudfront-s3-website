@@ -1,6 +1,10 @@
 import * as cdk from "aws-cdk-lib";
 import { Construct } from "constructs";
-import { ContentsDeliveryProperty, AccessLog } from "../../parameter/index";
+import {
+  ContentsDeliveryProperty,
+  AccessLog,
+  LogAnalytics,
+} from "../../parameter/index";
 import { BucketConstruct } from "./bucket-construct";
 import { HostedZoneConstruct } from "./hosted-zone-construct";
 import { CertificateConstruct } from "./certificate-construct";
@@ -8,7 +12,8 @@ import * as path from "path";
 
 export interface ContentsDeliveryConstructProps
   extends ContentsDeliveryProperty,
-    AccessLog {
+    AccessLog,
+    LogAnalytics {
   websiteBucketConstruct: BucketConstruct;
   cloudFrontAccessLogBucketConstruct?: BucketConstruct;
   hostedZoneConstruct?: HostedZoneConstruct;
@@ -200,6 +205,78 @@ export class ContentsDeliveryConstruct extends Construct {
         target: cdk.aws_route53.RecordTarget.fromAlias(
           new cdk.aws_route53_targets.CloudFrontTarget(this.distribution)
         ),
+      });
+    }
+
+    if (
+      props.cloudFrontAccessLogBucketConstruct &&
+      props.enableLogAnalytics?.find((enableLogAnalytics) => {
+        return enableLogAnalytics === "cloudFrontAccessLog";
+      })
+    ) {
+      const targetKeyPrefix = props.logFilePrefix
+        ? `${props.logFilePrefix}/partitioned/${cdk.Stack.of(this).account}/${
+            this.distribution.distributionId
+          }/`
+        : `partitioned/${cdk.Stack.of(this).account}/${
+            this.distribution.distributionId
+          }/`;
+
+      const moveCloudFrontAccessLogLambda =
+        new cdk.aws_lambda_nodejs.NodejsFunction(
+          this,
+          "MoveCloudFrontAccessLogLambda",
+          {
+            entry: path.join(
+              __dirname,
+              "../src/lambda/move-cloudfront-access-log/index.ts"
+            ),
+            runtime: cdk.aws_lambda.Runtime.NODEJS_20_X,
+            bundling: {
+              minify: true,
+              tsconfig: path.join(__dirname, "../src/lambda/tsconfig.json"),
+              format: cdk.aws_lambda_nodejs.OutputFormat.ESM,
+            },
+            architecture: cdk.aws_lambda.Architecture.ARM_64,
+            environment: {
+              TARGET_KEY_PREFIX: targetKeyPrefix,
+              HIVE_COMPATIBLE_PARTITIONS: "false",
+            },
+          }
+        );
+
+      props.cloudFrontAccessLogBucketConstruct.bucket.enableEventBridgeNotification();
+      props.cloudFrontAccessLogBucketConstruct.bucket.grantReadWrite(
+        moveCloudFrontAccessLogLambda
+      );
+      props.cloudFrontAccessLogBucketConstruct.bucket.grantDelete(
+        moveCloudFrontAccessLogLambda
+      );
+
+      new cdk.aws_events.Rule(this, "CloudFrontAccessLogCreatedEventRule", {
+        eventPattern: {
+          source: ["aws.s3"],
+          resources: [
+            props.cloudFrontAccessLogBucketConstruct.bucket.bucketArn,
+          ],
+          detailType: ["Object Created"],
+          detail: {
+            object: {
+              key: [
+                {
+                  "anything-but": {
+                    prefix: targetKeyPrefix,
+                  },
+                },
+              ],
+            },
+          },
+        },
+        targets: [
+          new cdk.aws_events_targets.LambdaFunction(
+            moveCloudFrontAccessLogLambda
+          ),
+        ],
       });
     }
 
