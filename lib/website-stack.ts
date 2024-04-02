@@ -90,9 +90,7 @@ export class WebsiteStack extends cdk.Stack {
       return;
     }
     const database = props.logAnalytics?.enableLogAnalytics
-      ? logAnalyticsConstruct?.createDatabase({
-          scope: this,
-          id: "AccessLogDatabase",
+      ? logAnalyticsConstruct?.createDatabase("AccessLogDatabase", {
           databaseName: "access_log",
         })
       : undefined;
@@ -100,16 +98,16 @@ export class WebsiteStack extends cdk.Stack {
     // S3 Server Access Log Table
     if (s3serverAccessLogBucketConstruct) {
       database
-        ? logAnalyticsConstruct?.createTable({
-            scope: this,
-            id: "S3ServerAccessLogTable",
+        ? logAnalyticsConstruct?.createTable("S3ServerAccessLogTable", {
             databaseName: database.ref,
             logType: "s3ServerAccessLog",
-            logBucketName: s3serverAccessLogBucketConstruct.bucket.bucketName,
-            logSrcResourceId: websiteBucketConstruct.bucket.bucketName,
-            logSrcResourceAccountId: this.account,
-            logSrcResourceRegion: this.region,
-            logFilePrefix: props.s3ServerAccessLog?.logFilePrefix,
+            locationPlaceHolder: {
+              logBucketName: s3serverAccessLogBucketConstruct.bucket.bucketName,
+              logSrcResourceId: websiteBucketConstruct.bucket.bucketName,
+              logSrcResourceAccountId: this.account,
+              logSrcResourceRegion: this.region,
+              prefix: props.s3ServerAccessLog?.logFilePrefix,
+            },
           })
         : undefined;
     }
@@ -117,17 +115,18 @@ export class WebsiteStack extends cdk.Stack {
     // CloudFront Access Log Table
     if (cloudFrontAccessLogBucketConstruct) {
       database
-        ? logAnalyticsConstruct?.createTable({
-            scope: this,
-            id: "CloudFrontAccessLogTable",
+        ? logAnalyticsConstruct?.createTable("CloudFrontAccessLogTable", {
             databaseName: database.ref,
             logType: "cloudFrontAccessLog",
-            logBucketName: cloudFrontAccessLogBucketConstruct.bucket.bucketName,
-            logSrcResourceId:
-              contentsDeliveryConstruct.distribution.distributionId,
-            logSrcResourceAccountId: this.account,
-            logSrcResourceRegion: this.region,
-            logFilePrefix: props.cloudFrontAccessLog?.logFilePrefix,
+            locationPlaceHolder: {
+              logBucketName:
+                cloudFrontAccessLogBucketConstruct.bucket.bucketName,
+              logSrcResourceId:
+                contentsDeliveryConstruct.distribution.distributionId,
+              logSrcResourceAccountId: this.account,
+              logSrcResourceRegion: this.region,
+              prefix: props.cloudFrontAccessLog?.logFilePrefix,
+            },
           })
         : undefined;
     }

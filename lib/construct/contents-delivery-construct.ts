@@ -216,11 +216,11 @@ export class ContentsDeliveryConstruct extends Construct {
     ) {
       const targetKeyPrefix = props.logFilePrefix
         ? `${props.logFilePrefix}/partitioned/${cdk.Stack.of(this).account}/${
-            cdk.Stack.of(this).region
-          }/${this.distribution.distributionId}/`
+            this.distribution.distributionId
+          }/`
         : `partitioned/${cdk.Stack.of(this).account}/${
-            cdk.Stack.of(this).region
-          }/${this.distribution.distributionId}/`;
+            this.distribution.distributionId
+          }/`;
 
       const moveCloudFrontAccessLogLambda =
         new cdk.aws_lambda_nodejs.NodejsFunction(

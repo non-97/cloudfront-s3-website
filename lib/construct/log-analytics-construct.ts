@@ -14,21 +14,19 @@ type LogTables = {
 };
 
 interface CreateDatabaseProperty {
-  scope: Construct;
-  id: string;
   databaseName: string;
 }
 
 interface CreateTableProperty {
-  scope: Construct;
-  id: string;
   databaseName: string;
   logType: LogType;
-  logBucketName: string;
-  logSrcResourceId: string;
-  logSrcResourceAccountId: string;
-  logSrcResourceRegion: string;
-  logFilePrefix?: string;
+  locationPlaceHolder: {
+    logBucketName: string;
+    logSrcResourceAccountId: string;
+    logSrcResourceId?: string;
+    logSrcResourceRegion?: string;
+    prefix?: string;
+  };
 }
 
 const s3ServerAccessLog: LogTable = {
@@ -93,7 +91,7 @@ const s3ServerAccessLog: LogTable = {
 
 const cloudFrontAccessLog: LogTable = {
   location:
-    "s3://#{logBucketName}/#{prefix}partitioned/#{logSrcResourceAccountId}/#{logSrcResourceRegion}/#{logSrcResourceId}",
+    "s3://#{logBucketName}/#{prefix}partitioned/#{logSrcResourceAccountId}/#{logSrcResourceId}",
   storageLocationTemplate: "#{location}/${date}",
   tableInput: {
     name: "cloudfront_access_log",
@@ -197,9 +195,10 @@ export class LogAnalyticsConstruct extends Construct {
   }
 
   public createDatabase = (
+    id: string,
     props: CreateDatabaseProperty
   ): cdk.aws_glue.CfnDatabase => {
-    return new cdk.aws_glue.CfnDatabase(this, props.id, {
+    return new cdk.aws_glue.CfnDatabase(this, id, {
       catalogId: cdk.Stack.of(this).account,
       databaseInput: {
         name: props.databaseName,
@@ -207,17 +206,18 @@ export class LogAnalyticsConstruct extends Construct {
     });
   };
 
-  public createTable = (props: CreateTableProperty) => {
-    const prefix = props.logFilePrefix ? `${props.logFilePrefix}/` : "";
+  public createTable = (id: string, props: CreateTableProperty) => {
+    props.locationPlaceHolder.prefix = props.locationPlaceHolder.prefix
+      ? `${props.locationPlaceHolder.prefix}/`
+      : "";
 
     const logTable = logTables[props.logType];
     const tableInput = logTable.tableInput;
-    const location = logTable.location
-      .replace("#{logBucketName}", props.logBucketName)
-      .replace("#{prefix}", prefix)
-      .replace("#{logSrcResourceAccountId}", props.logSrcResourceAccountId)
-      .replace("#{logSrcResourceRegion}", props.logSrcResourceRegion)
-      .replace("#{logSrcResourceId}", props.logSrcResourceId);
+
+    const location = this.replacePlaceholders(
+      logTable.location,
+      props.locationPlaceHolder
+    );
     const storageLocationTemplate = logTable.storageLocationTemplate?.replace(
       "#{location}",
       location
@@ -235,10 +235,42 @@ export class LogAnalyticsConstruct extends Construct {
       },
     };
 
-    new cdk.aws_glue.CfnTable(this, props.id, {
+    new cdk.aws_glue.CfnTable(this, id, {
       databaseName: props.databaseName,
       catalogId: cdk.Stack.of(this).account,
       tableInput: mergedTableInput,
     });
+  };
+
+  private getPlaceholders = (template: string): string[] => {
+    const placeholderRegex = /#{([^}]+)}/g;
+    const placeholders: string[] = [];
+    let match;
+
+    while ((match = placeholderRegex.exec(template)) !== null) {
+      placeholders.push(match[1]);
+    }
+    return placeholders;
+  };
+
+  private replacePlaceholders = (
+    template: string,
+    props: Record<string, string>
+  ): string => {
+    const placeholders = this.getPlaceholders(template);
+    let result = template;
+
+    for (const placeholder of placeholders) {
+      if (props.hasOwnProperty(placeholder)) {
+        result = result.replace(
+          new RegExp(`#{${placeholder}}`, "g"),
+          props[placeholder]
+        );
+      } else {
+        throw new Error(`Placeholder not replaced: #{${placeholder}}`);
+      }
+    }
+
+    return result;
   };
 }

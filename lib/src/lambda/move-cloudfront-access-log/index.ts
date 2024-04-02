@@ -5,7 +5,7 @@ import {
   CopyObjectCommand,
   DeleteObjectCommand,
 } from "@aws-sdk/client-s3";
-import { Callback, EventBridgeEvent, Context } from "aws-lambda";
+import { EventBridgeEvent } from "aws-lambda";
 
 interface EventObjectCreated {
   version: string;
@@ -41,9 +41,7 @@ const datePattern = "[^\\d](\\d{4})-(\\d{2})-(\\d{2})-(\\d{2})[^\\d]";
 const filenamePattern = "[^/]+$";
 
 export const handler = async (
-  event: EventBridgeEvent<"Object Created", EventObjectCreated>,
-  context: Context,
-  callback: Callback
+  event: EventBridgeEvent<"Object Created", EventObjectCreated>
 ) => {
   const bucket = event.detail.bucket.name;
   const sourceKey = event.detail.object.key;
@@ -98,7 +96,7 @@ export const handler = async (
   try {
     await s3.send(new DeleteObjectCommand(deleteParams));
   } catch (e) {
-    Error(`Error while deleting ${sourceKey}: ${e}`);
+    throw new Error(`Error while deleting ${sourceKey}: ${e}`);
   }
   console.log(`Deleted ${sourceKey}.`);
 };
