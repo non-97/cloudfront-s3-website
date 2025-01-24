@@ -70,7 +70,7 @@ export const websiteStackProperty: WebSiteStackProperty = {
       domainName: "www.non-97.net",
       contentsPath: path.join(__dirname, "../lib/src/contents"),
       enableDirectoryIndex: "cf2",
-      enableRewriteToWebp: "cf2",
+      enableRewriteToWebp: "lambdaEdge",
       enableS3ListBucket: true,
     },
     allowDeleteBucketAndObjects: true,

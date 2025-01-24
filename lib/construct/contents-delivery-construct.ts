@@ -98,6 +98,33 @@ export class ContentsDeliveryConstruct extends Construct {
           )
         : undefined;
 
+    const rewriteToWebpLambdaEdge =
+      props.enableRewriteToWebp === "lambdaEdge"
+        ? new cdk.aws_lambda_nodejs.NodejsFunction(
+            this,
+            "RewriteToWebpLambdaEdge",
+            {
+              entry: path.join(
+                __dirname,
+                "../src/lambda/rewrite-to-webp/index.ts"
+              ),
+              runtime: cdk.aws_lambda.Runtime.NODEJS_22_X,
+              bundling: {
+                minify: true,
+                tsconfig: path.join(__dirname, "../src/lambda/tsconfig.json"),
+                format: cdk.aws_lambda_nodejs.OutputFormat.ESM,
+              },
+              awsSdkConnectionReuse: false,
+              architecture: cdk.aws_lambda.Architecture.X86_64,
+              timeout: cdk.Duration.seconds(5),
+              role: lambdaEdgeExecutionRole,
+              loggingFormat: cdk.aws_lambda.LoggingFormat.JSON,
+              applicationLogLevelV2: cdk.aws_lambda.ApplicationLogLevel.INFO,
+              systemLogLevelV2: cdk.aws_lambda.SystemLogLevel.INFO,
+            }
+          )
+        : undefined;
+
     // CloudFront Distribution
     const distribution = new cdk.aws_cloudfront.Distribution(this, "Default", {
       defaultRootObject: "index.html",
@@ -188,6 +215,14 @@ export class ContentsDeliveryConstruct extends Construct {
             {
               function: rewriteToWebpCF2,
               eventType: cdk.aws_cloudfront.FunctionEventType.VIEWER_REQUEST,
+            },
+          ]
+        : undefined,
+      edgeLambdas: rewriteToWebpLambdaEdge
+        ? [
+            {
+              functionVersion: rewriteToWebpLambdaEdge.currentVersion,
+              eventType: cdk.aws_cloudfront.LambdaEdgeEventType.ORIGIN_REQUEST,
             },
           ]
         : undefined,
