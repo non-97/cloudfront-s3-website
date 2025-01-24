@@ -97,9 +97,10 @@ export class ContentsDeliveryConstruct extends Construct {
         },
       ],
       defaultBehavior: {
-        origin: new cdk.aws_cloudfront_origins.S3Origin(
-          props.websiteBucketConstruct.bucket
-        ),
+        origin:
+          cdk.aws_cloudfront_origins.S3BucketOrigin.withOriginAccessControl(
+            props.websiteBucketConstruct.bucket
+          ),
         allowedMethods: cdk.aws_cloudfront.AllowedMethods.ALLOW_GET_HEAD,
         cachedMethods: cdk.aws_cloudfront.CachedMethods.CACHE_GET_HEAD,
         cachePolicy: cdk.aws_cloudfront.CachePolicy.CACHING_OPTIMIZED,
@@ -134,42 +135,6 @@ export class ContentsDeliveryConstruct extends Construct {
       logBucket: props.cloudFrontAccessLogBucketConstruct?.bucket,
       logFilePrefix: props.logFilePrefix,
     });
-
-    // OAC
-    const cfnOriginAccessControl =
-      new cdk.aws_cloudfront.CfnOriginAccessControl(
-        this,
-        "OriginAccessControl",
-        {
-          originAccessControlConfig: {
-            name: "Origin Access Control for Website Bucket",
-            originAccessControlOriginType: "s3",
-            signingBehavior: "always",
-            signingProtocol: "sigv4",
-          },
-        }
-      );
-
-    const cfnDistribution = this.distribution.node
-      .defaultChild as cdk.aws_cloudfront.CfnDistribution;
-
-    // Set OAC
-    cfnDistribution.addPropertyOverride(
-      "DistributionConfig.Origins.0.OriginAccessControlId",
-      cfnOriginAccessControl.attrId
-    );
-
-    // Set S3 domain name
-    cfnDistribution.addPropertyOverride(
-      "DistributionConfig.Origins.0.DomainName",
-      props.websiteBucketConstruct.bucket.bucketRegionalDomainName
-    );
-
-    // Delete OAI
-    cfnDistribution.addPropertyOverride(
-      "DistributionConfig.Origins.0.S3OriginConfig.OriginAccessIdentity",
-      ""
-    );
 
     // Bucket policy
     props.websiteBucketConstruct.bucket.addToResourcePolicy(
