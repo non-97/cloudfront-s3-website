@@ -35,6 +35,7 @@ export interface ContentsDeliveryProperty {
   domainName?: string;
   contentsPath?: string;
   enableDirectoryIndex?: "cf2" | "lambdaEdge" | false;
+  enableRewriteToWebp?: "cf2" | "lambdaEdge" | false;
   enableS3ListBucket?: boolean;
 }
 
@@ -69,6 +70,7 @@ export const websiteStackProperty: WebSiteStackProperty = {
       domainName: "www.non-97.net",
       contentsPath: path.join(__dirname, "../lib/src/contents"),
       enableDirectoryIndex: "cf2",
+      enableRewriteToWebp: "lambdaEdge",
       enableS3ListBucket: true,
     },
     allowDeleteBucketAndObjects: true,

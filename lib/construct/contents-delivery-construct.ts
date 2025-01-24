@@ -21,7 +21,7 @@ export interface ContentsDeliveryConstructProps
 }
 
 export class ContentsDeliveryConstruct extends Construct {
-  readonly distribution: cdk.aws_cloudfront.Distribution;
+  readonly distribution: cdk.aws_cloudfront.IDistribution;
 
   constructor(
     scope: Construct,
@@ -44,7 +44,36 @@ export class ContentsDeliveryConstruct extends Construct {
           })
         : undefined;
 
+    const rewriteToWebpCF2 =
+      props.enableRewriteToWebp === "cf2"
+        ? new cdk.aws_cloudfront.Function(this, "RewriteToWebpCF2", {
+            code: cdk.aws_cloudfront.FunctionCode.fromFile({
+              filePath: path.join(
+                __dirname,
+                "../src/cf2/rewrite-to-webp/index.js"
+              ),
+            }),
+            runtime: cdk.aws_cloudfront.FunctionRuntime.JS_2_0,
+          })
+        : undefined;
+
     // Lambda@Edge
+    const lambdaEdgeExecutionRole = new cdk.aws_iam.Role(
+      this,
+      "LambdaEdgeExecutionRole",
+      {
+        assumedBy: new cdk.aws_iam.CompositePrincipal(
+          new cdk.aws_iam.ServicePrincipal("lambda.amazonaws.com"),
+          new cdk.aws_iam.ServicePrincipal("edgelambda.amazonaws.com")
+        ),
+        managedPolicies: [
+          cdk.aws_iam.ManagedPolicy.fromAwsManagedPolicyName(
+            "service-role/AWSLambdaBasicExecutionRole"
+          ),
+        ],
+      }
+    );
+
     const directoryIndexLambdaEdge =
       props.enableDirectoryIndex === "lambdaEdge"
         ? new cdk.aws_lambda_nodejs.NodejsFunction(
@@ -55,7 +84,7 @@ export class ContentsDeliveryConstruct extends Construct {
                 __dirname,
                 "../src/lambda/directory-index/index.ts"
               ),
-              runtime: cdk.aws_lambda.Runtime.NODEJS_20_X,
+              runtime: cdk.aws_lambda.Runtime.NODEJS_22_X,
               bundling: {
                 minify: true,
                 tsconfig: path.join(__dirname, "../src/lambda/tsconfig.json"),
@@ -64,23 +93,40 @@ export class ContentsDeliveryConstruct extends Construct {
               awsSdkConnectionReuse: false,
               architecture: cdk.aws_lambda.Architecture.X86_64,
               timeout: cdk.Duration.seconds(5),
-              role: new cdk.aws_iam.Role(this, "LambdaEdgeExecutionRole", {
-                assumedBy: new cdk.aws_iam.CompositePrincipal(
-                  new cdk.aws_iam.ServicePrincipal("lambda.amazonaws.com"),
-                  new cdk.aws_iam.ServicePrincipal("edgelambda.amazonaws.com")
-                ),
-                managedPolicies: [
-                  cdk.aws_iam.ManagedPolicy.fromAwsManagedPolicyName(
-                    "service-role/AWSLambdaBasicExecutionRole"
-                  ),
-                ],
-              }),
+              role: lambdaEdgeExecutionRole,
+            }
+          )
+        : undefined;
+
+    const rewriteToWebpLambdaEdge =
+      props.enableRewriteToWebp === "lambdaEdge"
+        ? new cdk.aws_lambda_nodejs.NodejsFunction(
+            this,
+            "RewriteToWebpLambdaEdge",
+            {
+              entry: path.join(
+                __dirname,
+                "../src/lambda/rewrite-to-webp/index.ts"
+              ),
+              runtime: cdk.aws_lambda.Runtime.NODEJS_22_X,
+              bundling: {
+                minify: true,
+                tsconfig: path.join(__dirname, "../src/lambda/tsconfig.json"),
+                format: cdk.aws_lambda_nodejs.OutputFormat.ESM,
+              },
+              awsSdkConnectionReuse: false,
+              architecture: cdk.aws_lambda.Architecture.X86_64,
+              timeout: cdk.Duration.seconds(5),
+              role: lambdaEdgeExecutionRole,
+              loggingFormat: cdk.aws_lambda.LoggingFormat.JSON,
+              applicationLogLevelV2: cdk.aws_lambda.ApplicationLogLevel.INFO,
+              systemLogLevelV2: cdk.aws_lambda.SystemLogLevel.INFO,
             }
           )
         : undefined;
 
     // CloudFront Distribution
-    this.distribution = new cdk.aws_cloudfront.Distribution(this, "Default", {
+    const distribution = new cdk.aws_cloudfront.Distribution(this, "Default", {
       defaultRootObject: "index.html",
       errorResponses: [
         {
@@ -97,9 +143,10 @@ export class ContentsDeliveryConstruct extends Construct {
         },
       ],
       defaultBehavior: {
-        origin: new cdk.aws_cloudfront_origins.S3Origin(
-          props.websiteBucketConstruct.bucket
-        ),
+        origin:
+          cdk.aws_cloudfront_origins.S3BucketOrigin.withOriginAccessControl(
+            props.websiteBucketConstruct.bucket
+          ),
         allowedMethods: cdk.aws_cloudfront.AllowedMethods.ALLOW_GET_HEAD,
         cachedMethods: cdk.aws_cloudfront.CachedMethods.CACHE_GET_HEAD,
         cachePolicy: cdk.aws_cloudfront.CachePolicy.CACHING_OPTIMIZED,
@@ -134,41 +181,66 @@ export class ContentsDeliveryConstruct extends Construct {
       logBucket: props.cloudFrontAccessLogBucketConstruct?.bucket,
       logFilePrefix: props.logFilePrefix,
     });
+    this.distribution = distribution;
 
-    // OAC
-    const cfnOriginAccessControl =
-      new cdk.aws_cloudfront.CfnOriginAccessControl(
-        this,
-        "OriginAccessControl",
-        {
-          originAccessControlConfig: {
-            name: "Origin Access Control for Website Bucket",
-            originAccessControlOriginType: "s3",
-            signingBehavior: "always",
-            signingProtocol: "sigv4",
-          },
-        }
-      );
-
-    const cfnDistribution = this.distribution.node
-      .defaultChild as cdk.aws_cloudfront.CfnDistribution;
-
-    // Set OAC
-    cfnDistribution.addPropertyOverride(
-      "DistributionConfig.Origins.0.OriginAccessControlId",
-      cfnOriginAccessControl.attrId
+    // Cache Policy
+    const acceptCachePolicy = new cdk.aws_cloudfront.CachePolicy(
+      this,
+      "AcceptCachePolicy",
+      {
+        defaultTtl: cdk.Duration.days(1),
+        minTtl: cdk.Duration.seconds(1),
+        maxTtl: cdk.Duration.days(7),
+        cookieBehavior: cdk.aws_cloudfront.CacheCookieBehavior.none(),
+        headerBehavior:
+          cdk.aws_cloudfront.CacheHeaderBehavior.allowList("Accept"),
+        queryStringBehavior: cdk.aws_cloudfront.CacheQueryStringBehavior.none(),
+        enableAcceptEncodingGzip: true,
+        enableAcceptEncodingBrotli: true,
+      }
     );
 
-    // Set S3 domain name
-    cfnDistribution.addPropertyOverride(
-      "DistributionConfig.Origins.0.DomainName",
-      props.websiteBucketConstruct.bucket.bucketRegionalDomainName
-    );
+    const addBehaviorOptions: cdk.aws_cloudfront.AddBehaviorOptions = {
+      allowedMethods: cdk.aws_cloudfront.AllowedMethods.ALLOW_GET_HEAD,
+      cachedMethods: cdk.aws_cloudfront.CachedMethods.CACHE_GET_HEAD,
+      cachePolicy: acceptCachePolicy,
+      originRequestPolicy:
+        cdk.aws_cloudfront.OriginRequestPolicy.ALL_VIEWER_EXCEPT_HOST_HEADER,
+      viewerProtocolPolicy:
+        cdk.aws_cloudfront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
+      responseHeadersPolicy:
+        cdk.aws_cloudfront.ResponseHeadersPolicy.SECURITY_HEADERS,
+      functionAssociations: rewriteToWebpCF2
+        ? [
+            {
+              function: rewriteToWebpCF2,
+              eventType: cdk.aws_cloudfront.FunctionEventType.VIEWER_REQUEST,
+            },
+          ]
+        : undefined,
+      edgeLambdas: rewriteToWebpLambdaEdge
+        ? [
+            {
+              functionVersion: rewriteToWebpLambdaEdge.currentVersion,
+              eventType: cdk.aws_cloudfront.LambdaEdgeEventType.ORIGIN_REQUEST,
+            },
+          ]
+        : undefined,
+    };
 
-    // Delete OAI
-    cfnDistribution.addPropertyOverride(
-      "DistributionConfig.Origins.0.S3OriginConfig.OriginAccessIdentity",
-      ""
+    distribution.addBehavior(
+      "/*.jpe?g",
+      cdk.aws_cloudfront_origins.S3BucketOrigin.withOriginAccessControl(
+        props.websiteBucketConstruct.bucket
+      ),
+      addBehaviorOptions
+    );
+    distribution.addBehavior(
+      "/*.png",
+      cdk.aws_cloudfront_origins.S3BucketOrigin.withOriginAccessControl(
+        props.websiteBucketConstruct.bucket
+      ),
+      addBehaviorOptions
     );
 
     // Bucket policy
@@ -191,7 +263,7 @@ export class ContentsDeliveryConstruct extends Construct {
           StringEquals: {
             "AWS:SourceArn": `arn:aws:cloudfront::${
               cdk.Stack.of(this).account
-            }:distribution/${this.distribution.distributionId}`,
+            }:distribution/${distribution.distributionId}`,
           },
         },
       })
@@ -203,7 +275,7 @@ export class ContentsDeliveryConstruct extends Construct {
         recordName: props.domainName,
         zone: props.hostedZoneConstruct.hostedZone,
         target: cdk.aws_route53.RecordTarget.fromAlias(
-          new cdk.aws_route53_targets.CloudFrontTarget(this.distribution)
+          new cdk.aws_route53_targets.CloudFrontTarget(distribution)
         ),
       });
     }
@@ -216,10 +288,10 @@ export class ContentsDeliveryConstruct extends Construct {
     ) {
       const targetKeyPrefix = props.logFilePrefix
         ? `${props.logFilePrefix}/partitioned/${cdk.Stack.of(this).account}/${
-            this.distribution.distributionId
+            distribution.distributionId
           }/`
         : `partitioned/${cdk.Stack.of(this).account}/${
-            this.distribution.distributionId
+            distribution.distributionId
           }/`;
 
       const moveCloudFrontAccessLogLambda =
@@ -284,11 +356,26 @@ export class ContentsDeliveryConstruct extends Construct {
     if (!props.contentsPath) {
       return;
     }
+    const asset = cdk.aws_s3_deployment.Source.asset(props.contentsPath, {
+      exclude: [".DS_Store"],
+    });
+
     new cdk.aws_s3_deployment.BucketDeployment(this, "DeployContents", {
-      sources: [cdk.aws_s3_deployment.Source.asset(props.contentsPath)],
+      sources: [asset],
       destinationBucket: props.websiteBucketConstruct.bucket,
-      distribution: this.distribution,
+      exclude: ["*.webp"],
+      distribution,
       distributionPaths: ["/*"],
+    });
+
+    new cdk.aws_s3_deployment.BucketDeployment(this, "DeployContentsWebP", {
+      sources: [asset],
+      destinationBucket: props.websiteBucketConstruct.bucket,
+      exclude: ["*"],
+      include: ["*.webp"],
+      distribution,
+      distributionPaths: ["/*"],
+      contentType: "image/webp",
     });
   }
 }
