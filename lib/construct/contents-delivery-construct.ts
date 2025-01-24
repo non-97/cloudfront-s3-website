@@ -50,7 +50,7 @@ export class ContentsDeliveryConstruct extends Construct {
             code: cdk.aws_cloudfront.FunctionCode.fromFile({
               filePath: path.join(
                 __dirname,
-                "../src/cf2/rewrite-webp/index.js"
+                "../src/cf2/rewrite-to-webp/index.js"
               ),
             }),
             runtime: cdk.aws_cloudfront.FunctionRuntime.JS_2_0,
@@ -83,30 +83,6 @@ export class ContentsDeliveryConstruct extends Construct {
               entry: path.join(
                 __dirname,
                 "../src/lambda/directory-index/index.ts"
-              ),
-              runtime: cdk.aws_lambda.Runtime.NODEJS_22_X,
-              bundling: {
-                minify: true,
-                tsconfig: path.join(__dirname, "../src/lambda/tsconfig.json"),
-                format: cdk.aws_lambda_nodejs.OutputFormat.ESM,
-              },
-              awsSdkConnectionReuse: false,
-              architecture: cdk.aws_lambda.Architecture.X86_64,
-              timeout: cdk.Duration.seconds(5),
-              role: lambdaEdgeExecutionRole,
-            }
-          )
-        : undefined;
-
-    const fallbackOriginalUriLambdaEdge =
-      props.enableRewriteToWebp === "cf2"
-        ? new cdk.aws_lambda_nodejs.NodejsFunction(
-            this,
-            "FallbackOriginalUriLambdaEdge",
-            {
-              entry: path.join(
-                __dirname,
-                "../src/lambda/fallback-original-uri/index.ts"
               ),
               runtime: cdk.aws_lambda.Runtime.NODEJS_22_X,
               bundling: {
@@ -212,14 +188,6 @@ export class ContentsDeliveryConstruct extends Construct {
             {
               function: rewriteToWebpCF2,
               eventType: cdk.aws_cloudfront.FunctionEventType.VIEWER_REQUEST,
-            },
-          ]
-        : undefined,
-      edgeLambdas: fallbackOriginalUriLambdaEdge
-        ? [
-            {
-              functionVersion: fallbackOriginalUriLambdaEdge.currentVersion,
-              eventType: cdk.aws_cloudfront.LambdaEdgeEventType.ORIGIN_RESPONSE,
             },
           ]
         : undefined,
