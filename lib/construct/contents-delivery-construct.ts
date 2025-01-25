@@ -22,6 +22,7 @@ export interface ContentsDeliveryConstructProps
 
 export class ContentsDeliveryConstruct extends Construct {
   readonly distribution: cdk.aws_cloudfront.IDistribution;
+  private readonly s3Origin: cdk.aws_cloudfront.IOrigin;
 
   constructor(
     scope: Construct,
@@ -30,102 +31,151 @@ export class ContentsDeliveryConstruct extends Construct {
   ) {
     super(scope, id);
 
-    // CloudFront Function
-    const directoryIndexCF2 =
-      props.enableDirectoryIndex === "cf2"
-        ? new cdk.aws_cloudfront.Function(this, "DirectoryIndexCF2", {
-            code: cdk.aws_cloudfront.FunctionCode.fromFile({
-              filePath: path.join(
-                __dirname,
-                "../src/cf2/directory-index/index.js"
-              ),
-            }),
-            runtime: cdk.aws_cloudfront.FunctionRuntime.JS_2_0,
-          })
-        : undefined;
+    const cloudFrontFunctions = this.createCF2(props);
+    const lambdaEdgeFunctions = this.createLambdaEdgeFunctions(props);
 
-    const rewriteToWebpCF2 =
-      props.enableRewriteToWebp === "cf2"
-        ? new cdk.aws_cloudfront.Function(this, "RewriteToWebpCF2", {
-            code: cdk.aws_cloudfront.FunctionCode.fromFile({
-              filePath: path.join(
-                __dirname,
-                "../src/cf2/rewrite-to-webp/index.js"
-              ),
-            }),
-            runtime: cdk.aws_cloudfront.FunctionRuntime.JS_2_0,
-          })
-        : undefined;
+    this.s3Origin =
+      cdk.aws_cloudfront_origins.S3BucketOrigin.withOriginAccessControl(
+        props.websiteBucketConstruct.bucket
+      );
 
-    // Lambda@Edge
-    const lambdaEdgeExecutionRole = new cdk.aws_iam.Role(
-      this,
-      "LambdaEdgeExecutionRole",
-      {
-        assumedBy: new cdk.aws_iam.CompositePrincipal(
-          new cdk.aws_iam.ServicePrincipal("lambda.amazonaws.com"),
-          new cdk.aws_iam.ServicePrincipal("edgelambda.amazonaws.com")
-        ),
-        managedPolicies: [
-          cdk.aws_iam.ManagedPolicy.fromAwsManagedPolicyName(
-            "service-role/AWSLambdaBasicExecutionRole"
-          ),
-        ],
-      }
-    );
+    this.distribution = this.createDistribution(props, {
+      ...cloudFrontFunctions,
+      ...lambdaEdgeFunctions,
+    });
 
-    const directoryIndexLambdaEdge =
-      props.enableDirectoryIndex === "lambdaEdge"
-        ? new cdk.aws_lambda_nodejs.NodejsFunction(
-            this,
-            "DirectoryIndexLambdaEdge",
-            {
-              entry: path.join(
-                __dirname,
-                "../src/lambda/directory-index/index.ts"
-              ),
-              runtime: cdk.aws_lambda.Runtime.NODEJS_22_X,
-              bundling: {
-                minify: true,
-                tsconfig: path.join(__dirname, "../src/lambda/tsconfig.json"),
-                format: cdk.aws_lambda_nodejs.OutputFormat.ESM,
-              },
-              awsSdkConnectionReuse: false,
-              architecture: cdk.aws_lambda.Architecture.X86_64,
-              timeout: cdk.Duration.seconds(5),
-              role: lambdaEdgeExecutionRole,
-            }
-          )
-        : undefined;
+    this.configureBucketPolicy(props);
+    this.configureRoute53Records(props);
+    this.configureLogAnalytics(props);
+    this.deployContents(props);
+  }
 
-    const rewriteToWebpLambdaEdge =
+  private createCF2(props: ContentsDeliveryConstructProps) {
+    return {
+      directoryIndexCF2:
+        props.enableDirectoryIndex === "cf2"
+          ? new cdk.aws_cloudfront.Function(this, "DirectoryIndexCF2", {
+              code: cdk.aws_cloudfront.FunctionCode.fromFile({
+                filePath: path.join(
+                  __dirname,
+                  "../src/cf2/directory-index/index.js"
+                ),
+              }),
+              runtime: cdk.aws_cloudfront.FunctionRuntime.JS_2_0,
+            })
+          : undefined,
+      rewriteToWebpCF2:
+        props.enableRewriteToWebp === "cf2"
+          ? new cdk.aws_cloudfront.Function(this, "RewriteToWebpCF2", {
+              code: cdk.aws_cloudfront.FunctionCode.fromFile({
+                filePath: path.join(
+                  __dirname,
+                  "../src/cf2/rewrite-to-webp/index.js"
+                ),
+              }),
+              runtime: cdk.aws_cloudfront.FunctionRuntime.JS_2_0,
+            })
+          : undefined,
+    };
+  }
+
+  private createLambdaEdgeFunctions(props: ContentsDeliveryConstructProps) {
+    // Early return if no Lambda@Edge functions are enabled
+    if (!this.isLambdaEdgeEnabled(props)) {
+      return {};
+    }
+
+    return {
+      directoryIndexLambdaEdge: this.createLambdaEdgeFunction({
+        functionName: "DirectoryIndexLambdaEdge",
+        entry: "../src/lambda/directory-index/index.ts",
+        enabled: props.enableDirectoryIndex === "lambdaEdge",
+      }),
+      rewriteToWebpLambdaEdge: this.createLambdaEdgeFunction({
+        functionName: "RewriteToWebpLambdaEdge",
+        entry: "../src/lambda/rewrite-to-webp/index.ts",
+        enabled: props.enableRewriteToWebp === "lambdaEdge",
+        additionalPermissions: (role) =>
+          this.configureRewriteToWebpPermissions(props, role),
+      }),
+    };
+  }
+
+  private isLambdaEdgeEnabled(props: ContentsDeliveryConstructProps): boolean {
+    return (
+      props.enableDirectoryIndex === "lambdaEdge" ||
       props.enableRewriteToWebp === "lambdaEdge"
-        ? new cdk.aws_lambda_nodejs.NodejsFunction(
-            this,
-            "RewriteToWebpLambdaEdge",
-            {
-              entry: path.join(
-                __dirname,
-                "../src/lambda/rewrite-to-webp/index.ts"
-              ),
-              runtime: cdk.aws_lambda.Runtime.NODEJS_22_X,
-              bundling: {
-                minify: true,
-                tsconfig: path.join(__dirname, "../src/lambda/tsconfig.json"),
-                format: cdk.aws_lambda_nodejs.OutputFormat.ESM,
-              },
-              awsSdkConnectionReuse: false,
-              architecture: cdk.aws_lambda.Architecture.X86_64,
-              timeout: cdk.Duration.seconds(5),
-              role: lambdaEdgeExecutionRole,
-              loggingFormat: cdk.aws_lambda.LoggingFormat.JSON,
-              applicationLogLevelV2: cdk.aws_lambda.ApplicationLogLevel.INFO,
-              systemLogLevelV2: cdk.aws_lambda.SystemLogLevel.INFO,
-            }
-          )
-        : undefined;
+    );
+  }
 
-    // CloudFront Distribution
+  private createLambdaEdgeFunction({
+    functionName,
+    entry,
+    enabled,
+    additionalPermissions,
+  }: {
+    functionName: string;
+    entry: string;
+    enabled: boolean;
+    additionalPermissions?: (role: cdk.aws_iam.Role) => void;
+  }): cdk.aws_lambda_nodejs.NodejsFunction | undefined {
+    if (!enabled) {
+      return undefined;
+    }
+
+    const role = new cdk.aws_iam.Role(this, `${functionName}Role`, {
+      assumedBy: new cdk.aws_iam.CompositePrincipal(
+        new cdk.aws_iam.ServicePrincipal("lambda.amazonaws.com"),
+        new cdk.aws_iam.ServicePrincipal("edgelambda.amazonaws.com")
+      ),
+      managedPolicies: [
+        cdk.aws_iam.ManagedPolicy.fromAwsManagedPolicyName(
+          "service-role/AWSLambdaBasicExecutionRole"
+        ),
+      ],
+    });
+
+    // Apply additional permissions if specified
+    if (additionalPermissions) {
+      additionalPermissions(role);
+    }
+
+    return new cdk.aws_lambda_nodejs.NodejsFunction(this, functionName, {
+      runtime: cdk.aws_lambda.Runtime.NODEJS_22_X,
+      bundling: {
+        minify: true,
+        tsconfig: path.join(__dirname, "../src/lambda/tsconfig.json"),
+        format: cdk.aws_lambda_nodejs.OutputFormat.ESM,
+      },
+      awsSdkConnectionReuse: false,
+      architecture: cdk.aws_lambda.Architecture.X86_64,
+      timeout: cdk.Duration.seconds(5),
+      role: role,
+      entry: path.join(__dirname, entry),
+    });
+  }
+
+  private configureRewriteToWebpPermissions(
+    props: ContentsDeliveryConstructProps,
+    role: cdk.aws_iam.Role
+  ): void {
+    role.addToPolicy(
+      new cdk.aws_iam.PolicyStatement({
+        effect: cdk.aws_iam.Effect.ALLOW,
+        actions: ["s3:GetObject", "s3:ListBucket"],
+        resources: [
+          `${props.websiteBucketConstruct.bucket.bucketArn}/*`,
+          props.websiteBucketConstruct.bucket.bucketArn,
+        ],
+      })
+    );
+  }
+
+  private createDistribution(
+    props: ContentsDeliveryConstructProps,
+    functions: ReturnType<typeof this.createCF2> &
+      ReturnType<typeof this.createLambdaEdgeFunctions>
+  ) {
     const distribution = new cdk.aws_cloudfront.Distribution(this, "Default", {
       defaultRootObject: "index.html",
       errorResponses: [
@@ -142,36 +192,7 @@ export class ContentsDeliveryConstruct extends Construct {
           responsePagePath: "/error.html",
         },
       ],
-      defaultBehavior: {
-        origin:
-          cdk.aws_cloudfront_origins.S3BucketOrigin.withOriginAccessControl(
-            props.websiteBucketConstruct.bucket
-          ),
-        allowedMethods: cdk.aws_cloudfront.AllowedMethods.ALLOW_GET_HEAD,
-        cachedMethods: cdk.aws_cloudfront.CachedMethods.CACHE_GET_HEAD,
-        cachePolicy: cdk.aws_cloudfront.CachePolicy.CACHING_OPTIMIZED,
-        viewerProtocolPolicy:
-          cdk.aws_cloudfront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
-        responseHeadersPolicy:
-          cdk.aws_cloudfront.ResponseHeadersPolicy.SECURITY_HEADERS,
-        functionAssociations: directoryIndexCF2
-          ? [
-              {
-                function: directoryIndexCF2,
-                eventType: cdk.aws_cloudfront.FunctionEventType.VIEWER_REQUEST,
-              },
-            ]
-          : undefined,
-        edgeLambdas: directoryIndexLambdaEdge
-          ? [
-              {
-                functionVersion: directoryIndexLambdaEdge.currentVersion,
-                eventType:
-                  cdk.aws_cloudfront.LambdaEdgeEventType.ORIGIN_REQUEST,
-              },
-            ]
-          : undefined,
-      },
+      defaultBehavior: this.getDefaultBehavior(functions),
       httpVersion: cdk.aws_cloudfront.HttpVersion.HTTP2_AND_3,
       priceClass: cdk.aws_cloudfront.PriceClass.PRICE_CLASS_ALL,
       domainNames: props.domainName ? [props.domainName] : undefined,
@@ -181,69 +202,104 @@ export class ContentsDeliveryConstruct extends Construct {
       logBucket: props.cloudFrontAccessLogBucketConstruct?.bucket,
       logFilePrefix: props.logFilePrefix,
     });
-    this.distribution = distribution;
 
-    // Cache Policy
-    const acceptCachePolicy = new cdk.aws_cloudfront.CachePolicy(
-      this,
-      "AcceptCachePolicy",
-      {
-        defaultTtl: cdk.Duration.days(1),
-        minTtl: cdk.Duration.seconds(1),
-        maxTtl: cdk.Duration.days(7),
-        cookieBehavior: cdk.aws_cloudfront.CacheCookieBehavior.none(),
-        headerBehavior:
-          cdk.aws_cloudfront.CacheHeaderBehavior.allowList("Accept"),
-        queryStringBehavior: cdk.aws_cloudfront.CacheQueryStringBehavior.none(),
-        enableAcceptEncodingGzip: true,
-        enableAcceptEncodingBrotli: true,
-      }
-    );
+    this.addImageBehaviors(distribution, functions);
 
-    const addBehaviorOptions: cdk.aws_cloudfront.AddBehaviorOptions = {
+    return distribution;
+  }
+
+  private getDefaultBehavior(
+    functions: ReturnType<typeof this.createCF2> &
+      ReturnType<typeof this.createLambdaEdgeFunctions>
+  ): cdk.aws_cloudfront.BehaviorOptions {
+    return {
+      origin: this.s3Origin,
       allowedMethods: cdk.aws_cloudfront.AllowedMethods.ALLOW_GET_HEAD,
       cachedMethods: cdk.aws_cloudfront.CachedMethods.CACHE_GET_HEAD,
-      cachePolicy: acceptCachePolicy,
+      cachePolicy: cdk.aws_cloudfront.CachePolicy.CACHING_OPTIMIZED,
+      viewerProtocolPolicy:
+        cdk.aws_cloudfront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
+      responseHeadersPolicy:
+        cdk.aws_cloudfront.ResponseHeadersPolicy.SECURITY_HEADERS,
+      functionAssociations: functions.directoryIndexCF2
+        ? [
+            {
+              function: functions.directoryIndexCF2,
+              eventType: cdk.aws_cloudfront.FunctionEventType.VIEWER_REQUEST,
+            },
+          ]
+        : undefined,
+      edgeLambdas: functions.directoryIndexLambdaEdge
+        ? [
+            {
+              functionVersion:
+                functions.directoryIndexLambdaEdge.currentVersion,
+              eventType: cdk.aws_cloudfront.LambdaEdgeEventType.ORIGIN_REQUEST,
+            },
+          ]
+        : undefined,
+    };
+  }
+
+  private createAcceptCachePolicy() {
+    return new cdk.aws_cloudfront.CachePolicy(this, "AcceptCachePolicy", {
+      defaultTtl: cdk.Duration.days(1),
+      minTtl: cdk.Duration.seconds(1),
+      maxTtl: cdk.Duration.days(7),
+      cookieBehavior: cdk.aws_cloudfront.CacheCookieBehavior.none(),
+      headerBehavior:
+        cdk.aws_cloudfront.CacheHeaderBehavior.allowList("Accept"),
+      queryStringBehavior: cdk.aws_cloudfront.CacheQueryStringBehavior.none(),
+      enableAcceptEncodingGzip: true,
+      enableAcceptEncodingBrotli: true,
+    });
+  }
+
+  private getImageBehaviorOptions(
+    functions: ReturnType<typeof this.createCF2> &
+      ReturnType<typeof this.createLambdaEdgeFunctions>
+  ): cdk.aws_cloudfront.AddBehaviorOptions {
+    return {
+      allowedMethods: cdk.aws_cloudfront.AllowedMethods.ALLOW_GET_HEAD,
+      cachedMethods: cdk.aws_cloudfront.CachedMethods.CACHE_GET_HEAD,
+      cachePolicy: this.createAcceptCachePolicy(),
       originRequestPolicy:
         cdk.aws_cloudfront.OriginRequestPolicy.ALL_VIEWER_EXCEPT_HOST_HEADER,
       viewerProtocolPolicy:
         cdk.aws_cloudfront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
       responseHeadersPolicy:
         cdk.aws_cloudfront.ResponseHeadersPolicy.SECURITY_HEADERS,
-      functionAssociations: rewriteToWebpCF2
+      functionAssociations: functions.rewriteToWebpCF2
         ? [
             {
-              function: rewriteToWebpCF2,
+              function: functions.rewriteToWebpCF2,
               eventType: cdk.aws_cloudfront.FunctionEventType.VIEWER_REQUEST,
             },
           ]
         : undefined,
-      edgeLambdas: rewriteToWebpLambdaEdge
+      edgeLambdas: functions.rewriteToWebpLambdaEdge
         ? [
             {
-              functionVersion: rewriteToWebpLambdaEdge.currentVersion,
+              functionVersion: functions.rewriteToWebpLambdaEdge.currentVersion,
               eventType: cdk.aws_cloudfront.LambdaEdgeEventType.ORIGIN_REQUEST,
             },
           ]
         : undefined,
     };
+  }
 
-    distribution.addBehavior(
-      "/*.jpe?g",
-      cdk.aws_cloudfront_origins.S3BucketOrigin.withOriginAccessControl(
-        props.websiteBucketConstruct.bucket
-      ),
-      addBehaviorOptions
-    );
-    distribution.addBehavior(
-      "/*.png",
-      cdk.aws_cloudfront_origins.S3BucketOrigin.withOriginAccessControl(
-        props.websiteBucketConstruct.bucket
-      ),
-      addBehaviorOptions
-    );
+  private addImageBehaviors(
+    distribution: cdk.aws_cloudfront.Distribution,
+    functions: ReturnType<typeof this.createCF2> &
+      ReturnType<typeof this.createLambdaEdgeFunctions>
+  ) {
+    const behaviorOptions = this.getImageBehaviorOptions(functions);
 
-    // Bucket policy
+    distribution.addBehavior("/*.jpe?g", this.s3Origin, behaviorOptions);
+    distribution.addBehavior("/*.png", this.s3Origin, behaviorOptions);
+  }
+
+  private configureBucketPolicy(props: ContentsDeliveryConstructProps) {
     props.websiteBucketConstruct.bucket.addToResourcePolicy(
       new cdk.aws_iam.PolicyStatement({
         actions: props.enableS3ListBucket
@@ -263,117 +319,135 @@ export class ContentsDeliveryConstruct extends Construct {
           StringEquals: {
             "AWS:SourceArn": `arn:aws:cloudfront::${
               cdk.Stack.of(this).account
-            }:distribution/${distribution.distributionId}`,
+            }:distribution/${this.distribution.distributionId}`,
           },
         },
       })
     );
+  }
 
-    // RRset
-    if (props.hostedZoneConstruct) {
+  private configureRoute53Records(props: ContentsDeliveryConstructProps) {
+    if (props.hostedZoneConstruct && props.domainName) {
       new cdk.aws_route53.ARecord(this, `AliasRecord`, {
         recordName: props.domainName,
         zone: props.hostedZoneConstruct.hostedZone,
         target: cdk.aws_route53.RecordTarget.fromAlias(
-          new cdk.aws_route53_targets.CloudFrontTarget(distribution)
+          new cdk.aws_route53_targets.CloudFrontTarget(this.distribution)
         ),
       });
     }
+  }
 
+  private configureLogAnalytics(props: ContentsDeliveryConstructProps) {
     if (
-      props.cloudFrontAccessLogBucketConstruct &&
-      props.enableLogAnalytics?.find((enableLogAnalytics) => {
-        return enableLogAnalytics === "cloudFrontAccessLog";
-      })
+      !props.cloudFrontAccessLogBucketConstruct ||
+      !props.enableLogAnalytics?.includes("cloudFrontAccessLog")
     ) {
-      const targetKeyPrefix = props.logFilePrefix
-        ? `${props.logFilePrefix}/partitioned/${cdk.Stack.of(this).account}/${
-            distribution.distributionId
-          }/`
-        : `partitioned/${cdk.Stack.of(this).account}/${
-            distribution.distributionId
-          }/`;
-
-      const moveCloudFrontAccessLogLambda =
-        new cdk.aws_lambda_nodejs.NodejsFunction(
-          this,
-          "MoveCloudFrontAccessLogLambda",
-          {
-            entry: path.join(
-              __dirname,
-              "../src/lambda/move-cloudfront-access-log/index.ts"
-            ),
-            runtime: cdk.aws_lambda.Runtime.NODEJS_20_X,
-            bundling: {
-              minify: true,
-              tsconfig: path.join(__dirname, "../src/lambda/tsconfig.json"),
-              format: cdk.aws_lambda_nodejs.OutputFormat.ESM,
-            },
-            architecture: cdk.aws_lambda.Architecture.ARM_64,
-            environment: {
-              TARGET_KEY_PREFIX: targetKeyPrefix,
-              HIVE_COMPATIBLE_PARTITIONS: "false",
-            },
-          }
-        );
-
-      props.cloudFrontAccessLogBucketConstruct.bucket.enableEventBridgeNotification();
-      props.cloudFrontAccessLogBucketConstruct.bucket.grantReadWrite(
-        moveCloudFrontAccessLogLambda
-      );
-      props.cloudFrontAccessLogBucketConstruct.bucket.grantDelete(
-        moveCloudFrontAccessLogLambda
-      );
-
-      new cdk.aws_events.Rule(this, "CloudFrontAccessLogCreatedEventRule", {
-        eventPattern: {
-          source: ["aws.s3"],
-          resources: [
-            props.cloudFrontAccessLogBucketConstruct.bucket.bucketArn,
-          ],
-          detailType: ["Object Created"],
-          detail: {
-            object: {
-              key: [
-                {
-                  "anything-but": {
-                    prefix: targetKeyPrefix,
-                  },
-                },
-              ],
-            },
-          },
-        },
-        targets: [
-          new cdk.aws_events_targets.LambdaFunction(
-            moveCloudFrontAccessLogLambda
-          ),
-        ],
-      });
+      return;
     }
 
-    // Deploy contents
+    const targetKeyPrefix = this.getLogKeyPrefix(props);
+    const moveLogLambda = this.createMoveLogLambda(targetKeyPrefix);
+
+    this.configureMoveLogLambdaPermissions(props, moveLogLambda);
+    this.createLogEventRule(props, targetKeyPrefix, moveLogLambda);
+  }
+
+  private getLogKeyPrefix(props: ContentsDeliveryConstructProps): string {
+    return props.logFilePrefix
+      ? `${props.logFilePrefix}/partitioned/${cdk.Stack.of(this).account}/${
+          this.distribution.distributionId
+        }/`
+      : `partitioned/${cdk.Stack.of(this).account}/${
+          this.distribution.distributionId
+        }/`;
+  }
+
+  private createMoveLogLambda(targetKeyPrefix: string) {
+    return new cdk.aws_lambda_nodejs.NodejsFunction(
+      this,
+      "MoveCloudFrontAccessLogLambda",
+      {
+        entry: path.join(
+          __dirname,
+          "../src/lambda/move-cloudfront-access-log/index.ts"
+        ),
+        runtime: cdk.aws_lambda.Runtime.NODEJS_20_X,
+        bundling: {
+          minify: true,
+          tsconfig: path.join(__dirname, "../src/lambda/tsconfig.json"),
+          format: cdk.aws_lambda_nodejs.OutputFormat.ESM,
+        },
+        architecture: cdk.aws_lambda.Architecture.ARM_64,
+        environment: {
+          TARGET_KEY_PREFIX: targetKeyPrefix,
+          HIVE_COMPATIBLE_PARTITIONS: "false",
+        },
+      }
+    );
+  }
+
+  private configureMoveLogLambdaPermissions(
+    props: ContentsDeliveryConstructProps,
+    lambda: cdk.aws_lambda_nodejs.NodejsFunction
+  ) {
+    const bucket = props.cloudFrontAccessLogBucketConstruct!.bucket;
+    bucket.enableEventBridgeNotification();
+    bucket.grantReadWrite(lambda);
+    bucket.grantDelete(lambda);
+  }
+
+  private createLogEventRule(
+    props: ContentsDeliveryConstructProps,
+    targetKeyPrefix: string,
+    lambda: cdk.aws_lambda_nodejs.NodejsFunction
+  ) {
+    new cdk.aws_events.Rule(this, "CloudFrontAccessLogCreatedEventRule", {
+      eventPattern: {
+        source: ["aws.s3"],
+        resources: [props.cloudFrontAccessLogBucketConstruct!.bucket.bucketArn],
+        detailType: ["Object Created"],
+        detail: {
+          object: {
+            key: [
+              {
+                "anything-but": {
+                  prefix: targetKeyPrefix,
+                },
+              },
+            ],
+          },
+        },
+      },
+      targets: [new cdk.aws_events_targets.LambdaFunction(lambda)],
+    });
+  }
+
+  private deployContents(props: ContentsDeliveryConstructProps) {
     if (!props.contentsPath) {
       return;
     }
+
     const asset = cdk.aws_s3_deployment.Source.asset(props.contentsPath, {
       exclude: [".DS_Store"],
     });
 
+    // Deploy non-WebP contents
     new cdk.aws_s3_deployment.BucketDeployment(this, "DeployContents", {
       sources: [asset],
       destinationBucket: props.websiteBucketConstruct.bucket,
       exclude: ["*.webp"],
-      distribution,
+      distribution: this.distribution,
       distributionPaths: ["/*"],
     });
 
+    // Deploy WebP contents
     new cdk.aws_s3_deployment.BucketDeployment(this, "DeployContentsWebP", {
       sources: [asset],
       destinationBucket: props.websiteBucketConstruct.bucket,
       exclude: ["*"],
       include: ["*.webp"],
-      distribution,
+      distribution: this.distribution,
       distributionPaths: ["/*"],
       contentType: "image/webp",
     });
