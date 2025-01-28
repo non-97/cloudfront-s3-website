@@ -99,39 +99,46 @@ export class WebsiteStack extends cdk.Stack {
       : undefined;
 
     // S3 Server Access Log Table
-    if (s3serverAccessLogBucketConstruct) {
-      database
-        ? logAnalyticsConstruct?.createTable("S3ServerAccessLogTable", {
-            databaseName: database.ref,
-            logType: "s3ServerAccessLog",
-            locationPlaceHolder: {
-              logBucketName: s3serverAccessLogBucketConstruct.bucket.bucketName,
-              logSrcResourceId: websiteBucketConstruct.bucket.bucketName,
-              logSrcResourceAccountId: this.account,
-              logSrcResourceRegion: this.region,
-              prefix: props.s3ServerAccessLog?.logFilePrefix,
-            },
-          })
-        : undefined;
+    if (s3serverAccessLogBucketConstruct && database) {
+      logAnalyticsConstruct.createTable("S3ServerAccessLogTable", {
+        databaseName: database.ref,
+        logType: "s3ServerAccessLog",
+        locationPlaceHolder: {
+          logBucketName: s3serverAccessLogBucketConstruct.bucket.bucketName,
+          logSrcResourceId: websiteBucketConstruct.bucket.bucketName,
+          logSrcResourceAccountId: this.account,
+          logSrcResourceRegion: this.region,
+          prefix: props.s3ServerAccessLog?.logFilePrefix,
+        },
+      });
     }
 
     // CloudFront Access Log Table
-    if (cloudFrontAccessLogBucketConstruct) {
-      database
-        ? logAnalyticsConstruct?.createTable("CloudFrontAccessLogTable", {
-            databaseName: database.ref,
-            logType: "cloudFrontAccessLog",
-            locationPlaceHolder: {
-              logBucketName:
-                cloudFrontAccessLogBucketConstruct.bucket.bucketName,
-              logSrcResourceId:
-                contentsDeliveryConstruct.distribution.distributionId,
-              logSrcResourceAccountId: this.account,
-              logSrcResourceRegion: this.region,
-              prefix: props.cloudFrontAccessLog?.logFilePrefix,
-            },
-          })
-        : undefined;
+    if (cloudFrontAccessLogBucketConstruct && database) {
+      const cloudFrontLogType = props.logAnalytics?.enableLogAnalytics?.find(
+        (
+          type
+        ): type is "cloudFrontStandardLogLegacy" | "cloudFrontStandardLogV2" =>
+          type === "cloudFrontStandardLogLegacy" ||
+          type === "cloudFrontStandardLogV2"
+      );
+
+      if (!cloudFrontLogType) {
+        return;
+      }
+
+      logAnalyticsConstruct.createTable("CloudFrontAccessLogTable", {
+        databaseName: database.ref,
+        logType: cloudFrontLogType,
+        locationPlaceHolder: {
+          logBucketName: cloudFrontAccessLogBucketConstruct.bucket.bucketName,
+          logSrcResourceId:
+            contentsDeliveryConstruct.distribution.distributionId,
+          logSrcResourceAccountId: this.account,
+          logSrcResourceRegion: this.region,
+          prefix: props.cloudFrontAccessLog?.logFilePrefix,
+        },
+      });
     }
   }
 }
