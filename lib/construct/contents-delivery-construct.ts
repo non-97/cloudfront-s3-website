@@ -340,27 +340,130 @@ export class ContentsDeliveryConstruct extends Construct {
 
   private configureLogAnalytics(props: ContentsDeliveryConstructProps) {
     if (
-      !props.cloudFrontAccessLogBucketConstruct ||
-      !props.enableLogAnalytics?.includes("cloudFrontAccessLog")
+      !props.enableLogAnalytics?.length ||
+      !props.cloudFrontAccessLogBucketConstruct
     ) {
       return;
     }
 
-    const targetKeyPrefix = this.getLogKeyPrefix(props);
-    const moveLogLambda = this.createMoveLogLambda(targetKeyPrefix);
+    // CloudFront Standard Log Legacy
+    if (props.enableLogAnalytics.includes("cloudFrontStandardLogLegacy")) {
+      const targetKeyPrefix = props.logFilePrefix
+        ? `${props.logFilePrefix}/partitioned/${cdk.Stack.of(this).account}/${
+            this.distribution.distributionId
+          }/`
+        : `partitioned/${cdk.Stack.of(this).account}/${
+            this.distribution.distributionId
+          }/`;
+      const moveLogLambda = this.createMoveLogLambda(targetKeyPrefix);
 
-    this.configureMoveLogLambdaPermissions(props, moveLogLambda);
-    this.createLogEventRule(props, targetKeyPrefix, moveLogLambda);
-  }
+      this.configureMoveLogLambdaPermissions(props, moveLogLambda);
+      this.createLogEventRule(props, targetKeyPrefix, moveLogLambda);
+    }
 
-  private getLogKeyPrefix(props: ContentsDeliveryConstructProps): string {
-    return props.logFilePrefix
-      ? `${props.logFilePrefix}/partitioned/${cdk.Stack.of(this).account}/${
-          this.distribution.distributionId
-        }/`
-      : `partitioned/${cdk.Stack.of(this).account}/${
-          this.distribution.distributionId
-        }/`;
+    // CloudFront Standard Log V2
+    if (props.enableLogAnalytics.includes("cloudFrontStandardLogV2")) {
+      // Remove CloudFront Standard Log Legacy
+      const cfnDistribution = this.distribution.node
+        .defaultChild as cdk.aws_cloudfront.CfnDistribution;
+      cfnDistribution.addPropertyDeletionOverride("DistributionConfig.Logging");
+
+      const logPrefix = this.getStandardLogV2Prefix(props.logFilePrefix);
+
+      props.cloudFrontAccessLogBucketConstruct.bucket.addToResourcePolicy(
+        new cdk.aws_iam.PolicyStatement({
+          actions: ["s3:PutObject"],
+          effect: cdk.aws_iam.Effect.ALLOW,
+          principals: [
+            new cdk.aws_iam.ServicePrincipal("delivery.logs.amazonaws.com"),
+          ],
+          resources: [
+            `${props.cloudFrontAccessLogBucketConstruct.bucket.bucketArn}/${logPrefix.awsLogObjectPrefix}*`,
+          ],
+          conditions: {
+            StringEquals: {
+              "s3:x-amz-acl": "bucket-owner-full-control",
+              "aws:SourceAccount": cdk.Stack.of(this).account,
+            },
+            ArnLike: {
+              "aws:SourceArn": `arn:aws:logs:${cdk.Stack.of(this).region}:${
+                cdk.Stack.of(this).account
+              }:delivery-source:cf-${this.distribution.distributionId}`,
+            },
+          },
+        })
+      );
+
+      const configCloudFrontStandardLogV2Lambda =
+        new cdk.aws_lambda_nodejs.NodejsFunction(
+          this,
+          "ConfigCloudFrontStandardLogV2Lambda",
+          {
+            entry: path.join(
+              __dirname,
+              "../src/lambda/standard-logging-v2/index.ts"
+            ),
+            bundling: {
+              minify: true,
+              tsconfig: path.join(__dirname, "../src/lambda/tsconfig.json"),
+              format: cdk.aws_lambda_nodejs.OutputFormat.ESM,
+              bundleAwsSDK: true,
+              mainFields: ["module", "main"],
+              banner:
+                "const require = (await import('node:module')).createRequire(import.meta.url);const __filename = (await import('node:url')).fileURLToPath(import.meta.url);const __dirname = (await import('node:path')).dirname(__filename);",
+            },
+            runtime: cdk.aws_lambda.Runtime.NODEJS_22_X,
+            architecture: cdk.aws_lambda.Architecture.ARM_64,
+            timeout: cdk.Duration.seconds(30),
+            initialPolicy: [
+              new cdk.aws_iam.PolicyStatement({
+                effect: cdk.aws_iam.Effect.ALLOW,
+                actions: [
+                  "logs:CreateDelivery",
+                  "logs:PutDeliveryDestination",
+                  "logs:PutDeliverySource",
+                  "logs:DeleteDelivery",
+                  "logs:DeleteDeliveryDestination",
+                  "logs:DeleteDeliverySource",
+                  "logs:UpdateDeliveryConfiguration",
+                ],
+                resources: ["*"],
+              }),
+              new cdk.aws_iam.PolicyStatement({
+                effect: cdk.aws_iam.Effect.ALLOW,
+                actions: ["cloudfront:AllowVendedLogDeliveryForResource"],
+                resources: [
+                  `arn:aws:cloudfront::${
+                    cdk.Stack.of(this).account
+                  }:distribution/${this.distribution.distributionId}`,
+                ],
+              }),
+            ],
+          }
+        );
+
+      const configCloudFrontStandardLogV2Provider =
+        new cdk.custom_resources.Provider(
+          this,
+          "ConfigCloudFrontStandardLogV2Provider",
+          {
+            onEventHandler: configCloudFrontStandardLogV2Lambda,
+          }
+        );
+
+      new cdk.CustomResource(this, "ConfigCloudFrontStandardLogV2", {
+        serviceToken: configCloudFrontStandardLogV2Provider.serviceToken,
+        serviceTimeout: cdk.Duration.seconds(60),
+        properties: {
+          DistributionId: this.distribution.distributionId,
+          DistributionArn: `arn:aws:cloudfront::${
+            cdk.Stack.of(this).account
+          }:distribution/${this.distribution.distributionId}`,
+          BucketArn: props.cloudFrontAccessLogBucketConstruct.bucket.bucketArn,
+          LogPrefix: logPrefix.logPrefix,
+        },
+      });
+    }
   }
 
   private createMoveLogLambda(targetKeyPrefix: string) {
@@ -372,7 +475,7 @@ export class ContentsDeliveryConstruct extends Construct {
           __dirname,
           "../src/lambda/move-cloudfront-access-log/index.ts"
         ),
-        runtime: cdk.aws_lambda.Runtime.NODEJS_20_X,
+        runtime: cdk.aws_lambda.Runtime.NODEJS_22_X,
         bundling: {
           minify: true,
           tsconfig: path.join(__dirname, "../src/lambda/tsconfig.json"),
@@ -385,6 +488,29 @@ export class ContentsDeliveryConstruct extends Construct {
         },
       }
     );
+  }
+
+  /**
+   * Format log object prefix with AWS Logs prefix
+   */
+  private getStandardLogV2Prefix(logFilePrefix: string | undefined): {
+    awsLogObjectPrefix: string;
+    logPrefix: string;
+  } {
+    const AWS_LOG_OBJECT_PREFIX = `AWSLogs/${
+      cdk.Stack.of(this).account
+    }/CloudFront/`;
+    const LOG_OBJECT_PATH = "{DistributionId}/{yyyy}/{MM}/{dd}/{HH}";
+
+    const logPath = logFilePrefix
+      ? `${logFilePrefix}/${LOG_OBJECT_PATH}`
+      : LOG_OBJECT_PATH;
+
+    const logPrefix = logPath.startsWith(AWS_LOG_OBJECT_PREFIX)
+      ? logPath
+      : `${AWS_LOG_OBJECT_PREFIX}${logPath}`;
+
+    return { awsLogObjectPrefix: AWS_LOG_OBJECT_PREFIX, logPrefix };
   }
 
   private configureMoveLogLambdaPermissions(

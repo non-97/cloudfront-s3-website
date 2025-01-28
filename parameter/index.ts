@@ -1,7 +1,10 @@
 import * as cdk from "aws-cdk-lib";
 import * as path from "path";
 
-export type LogType = "s3ServerAccessLog" | "cloudFrontAccessLog";
+export type LogType =
+  | "s3ServerAccessLog"
+  | "cloudFrontStandardLogLegacy"
+  | "cloudFrontStandardLogV2";
 
 export interface LifecycleRule {
   prefix?: string;
@@ -84,7 +87,7 @@ export const websiteStackProperty: WebSiteStackProperty = {
     },
     logAnalytics: {
       createWorkGroup: true,
-      enableLogAnalytics: ["s3ServerAccessLog", "cloudFrontAccessLog"],
+      enableLogAnalytics: ["s3ServerAccessLog", "cloudFrontStandardLogV2"],
     },
   },
 };
