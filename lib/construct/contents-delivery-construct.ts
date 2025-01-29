@@ -1,3 +1,5 @@
+// 修正2
+
 import * as cdk from "aws-cdk-lib";
 import { Construct } from "constructs";
 import {
@@ -9,6 +11,7 @@ import { BucketConstruct } from "./bucket-construct";
 import { HostedZoneConstruct } from "./hosted-zone-construct";
 import { CertificateConstruct } from "./certificate-construct";
 import * as path from "path";
+import * as fs from "fs";
 
 export interface ContentsDeliveryConstructProps
   extends ContentsDeliveryProperty,
@@ -394,75 +397,91 @@ export class ContentsDeliveryConstruct extends Construct {
         })
       );
 
-      const configCloudFrontStandardLogV2Lambda =
-        new cdk.aws_lambda_nodejs.NodejsFunction(
+      const cloudFrontStandardLogDeliverySourceName = `cf-${this.distribution.distributionId}`;
+      const cloudFrontStandardLogDeliveryDestinationName = `cf-${this.distribution.distributionId}-s3`;
+
+      const cloudFrontStandardLogDeliverySource =
+        new cdk.aws_logs.CfnDeliverySource(
           this,
-          "ConfigCloudFrontStandardLogV2Lambda",
+          "CloudFrontStandardLogDeliverySource",
           {
-            entry: path.join(
-              __dirname,
-              "../src/lambda/standard-logging-v2/index.ts"
-            ),
-            bundling: {
-              minify: true,
-              tsconfig: path.join(__dirname, "../src/lambda/tsconfig.json"),
-              format: cdk.aws_lambda_nodejs.OutputFormat.ESM,
-              bundleAwsSDK: true,
-              mainFields: ["module", "main"],
-              banner:
-                "const require = (await import('node:module')).createRequire(import.meta.url);const __filename = (await import('node:url')).fileURLToPath(import.meta.url);const __dirname = (await import('node:path')).dirname(__filename);",
+            name: cloudFrontStandardLogDeliverySourceName,
+            resourceArn: this.distribution.distributionArn,
+            logType: "ACCESS_LOGS",
+          }
+        );
+
+      const cloudFrontStandardLogDeliveryDestination =
+        new cdk.aws_logs.CfnDeliveryDestination(
+          this,
+          "CloudFrontStandardLogDeliveryDestination",
+          {
+            name: cloudFrontStandardLogDeliveryDestinationName,
+            outputFormat: "parquet",
+            destinationResourceArn:
+              props.cloudFrontAccessLogBucketConstruct.bucket.bucketArn,
+          }
+        );
+
+      new cdk.custom_resources.AwsCustomResource(
+        this,
+        "CloudFrontStandardLogDelivery",
+        {
+          logRetention: cdk.aws_logs.RetentionDays.ONE_WEEK,
+          serviceTimeout: cdk.Duration.seconds(180),
+          timeout: cdk.Duration.seconds(120),
+          installLatestAwsSdk: true,
+          onCreate: {
+            action: "createDelivery",
+            parameters: {
+              deliverySourceName: cloudFrontStandardLogDeliverySource.name,
+              deliveryDestinationArn:
+                cloudFrontStandardLogDeliveryDestination.attrArn,
+              s3EnableHiveCompatiblePath: false,
+              s3DeliveryConfiguration: {
+                enableHiveCompatiblePath: false,
+                suffixPath: logPrefix.logPrefix.split(
+                  logPrefix.awsLogObjectPrefix
+                )[1],
+              },
             },
-            runtime: cdk.aws_lambda.Runtime.NODEJS_22_X,
-            architecture: cdk.aws_lambda.Architecture.ARM_64,
-            timeout: cdk.Duration.seconds(30),
-            initialPolicy: [
-              new cdk.aws_iam.PolicyStatement({
-                effect: cdk.aws_iam.Effect.ALLOW,
-                actions: [
-                  "logs:CreateDelivery",
-                  "logs:PutDeliveryDestination",
-                  "logs:PutDeliverySource",
-                  "logs:DeleteDelivery",
-                  "logs:DeleteDeliveryDestination",
-                  "logs:DeleteDeliverySource",
-                  "logs:UpdateDeliveryConfiguration",
-                ],
-                resources: ["*"],
-              }),
-              new cdk.aws_iam.PolicyStatement({
-                effect: cdk.aws_iam.Effect.ALLOW,
-                actions: ["cloudfront:AllowVendedLogDeliveryForResource"],
-                resources: [
-                  `arn:aws:cloudfront::${
-                    cdk.Stack.of(this).account
-                  }:distribution/${this.distribution.distributionId}`,
-                ],
-              }),
-            ],
-          }
-        );
-
-      const configCloudFrontStandardLogV2Provider =
-        new cdk.custom_resources.Provider(
-          this,
-          "ConfigCloudFrontStandardLogV2Provider",
-          {
-            onEventHandler: configCloudFrontStandardLogV2Lambda,
-          }
-        );
-
-      new cdk.CustomResource(this, "ConfigCloudFrontStandardLogV2", {
-        serviceToken: configCloudFrontStandardLogV2Provider.serviceToken,
-        serviceTimeout: cdk.Duration.seconds(60),
-        properties: {
-          DistributionId: this.distribution.distributionId,
-          DistributionArn: `arn:aws:cloudfront::${
-            cdk.Stack.of(this).account
-          }:distribution/${this.distribution.distributionId}`,
-          BucketArn: props.cloudFrontAccessLogBucketConstruct.bucket.bucketArn,
-          LogPrefix: logPrefix.logPrefix,
-        },
-      });
+            physicalResourceId:
+              cdk.custom_resources.PhysicalResourceId.fromResponse(
+                "delivery.id"
+              ),
+            service: "CloudWatchLogs",
+          },
+          onUpdate: {
+            action: "updateDeliveryConfiguration",
+            parameters: {
+              id: new cdk.custom_resources.PhysicalResourceIdReference(),
+              s3EnableHiveCompatiblePath: false,
+              s3DeliveryConfiguration: {
+                enableHiveCompatiblePath: false,
+                suffixPath: logPrefix.logPrefix,
+              },
+            },
+            service: "CloudWatchLogs",
+          },
+          onDelete: {
+            action: "deleteDelivery",
+            parameters: {
+              id: new cdk.custom_resources.PhysicalResourceIdReference(),
+            },
+            service: "CloudWatchLogs",
+          },
+          policy: cdk.custom_resources.AwsCustomResourcePolicy.fromStatements([
+            new cdk.aws_iam.PolicyStatement({
+              actions: [
+                "logs:CreateDelivery",
+                "logs:DeleteDelivery",
+                "logs:UpdateDeliveryConfiguration",
+              ],
+              resources: ["*"],
+            }),
+          ]),
+        }
+      );
     }
   }
 
