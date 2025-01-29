@@ -423,54 +423,65 @@ export class ContentsDeliveryConstruct extends Construct {
           }
         );
 
-      const cloudFrontStandardLogDelivery = new cdk.aws_logs.CfnDelivery(
+      new cdk.custom_resources.AwsCustomResource(
         this,
         "CloudFrontStandardLogDelivery",
         {
-          deliverySourceName: cloudFrontStandardLogDeliverySource.name,
-          deliveryDestinationArn:
-            cloudFrontStandardLogDeliveryDestination.attrArn,
-          s3EnableHiveCompatiblePath: false,
-          s3SuffixPath: logPrefix.logPrefix.split(
-            logPrefix.awsLogObjectPrefix
-          )[1],
+          logRetention: cdk.aws_logs.RetentionDays.ONE_WEEK,
+          serviceTimeout: cdk.Duration.seconds(180),
+          timeout: cdk.Duration.seconds(120),
+          installLatestAwsSdk: true,
+          onCreate: {
+            action: "createDelivery",
+            parameters: {
+              deliverySourceName: cloudFrontStandardLogDeliverySource.name,
+              deliveryDestinationArn:
+                cloudFrontStandardLogDeliveryDestination.attrArn,
+              s3EnableHiveCompatiblePath: false,
+              s3DeliveryConfiguration: {
+                enableHiveCompatiblePath: false,
+                suffixPath: logPrefix.logPrefix.split(
+                  logPrefix.awsLogObjectPrefix
+                )[1],
+              },
+            },
+            physicalResourceId:
+              cdk.custom_resources.PhysicalResourceId.fromResponse(
+                "delivery.id"
+              ),
+            service: "CloudWatchLogs",
+          },
+          onUpdate: {
+            action: "updateDeliveryConfiguration",
+            parameters: {
+              id: new cdk.custom_resources.PhysicalResourceIdReference(),
+              s3EnableHiveCompatiblePath: false,
+              s3DeliveryConfiguration: {
+                enableHiveCompatiblePath: false,
+                suffixPath: logPrefix.logPrefix,
+              },
+            },
+            service: "CloudWatchLogs",
+          },
+          onDelete: {
+            action: "deleteDelivery",
+            parameters: {
+              id: new cdk.custom_resources.PhysicalResourceIdReference(),
+            },
+            service: "CloudWatchLogs",
+          },
+          policy: cdk.custom_resources.AwsCustomResourcePolicy.fromStatements([
+            new cdk.aws_iam.PolicyStatement({
+              actions: [
+                "logs:CreateDelivery",
+                "logs:DeleteDelivery",
+                "logs:UpdateDeliveryConfiguration",
+              ],
+              resources: ["*"],
+            }),
+          ]),
         }
       );
-
-      if (this.resourceExists(cloudFrontStandardLogDelivery)) {
-        cloudFrontStandardLogDelivery.s3SuffixPath = logPrefix.logPrefix;
-      }
-      console.log(
-        `cloudFrontStandardLogDelivery.s3SuffixPath : ${cloudFrontStandardLogDelivery.s3SuffixPath}`
-      );
-    }
-  }
-
-  private resourceExists(resource: cdk.CfnResource): boolean {
-    try {
-      const manifestPath = path.join("cdk.out", "manifest.json");
-
-      if (!fs.existsSync(manifestPath)) {
-        console.log(
-          "manifest.json does not exist. This might be the first deployment."
-        );
-        return false;
-      }
-
-      const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf8"));
-
-      const resourcePath = resource.cfnOptions?.metadata?.["aws:cdk:path"];
-      if (!resourcePath) {
-        console.log("Resource path not found in metadata");
-        return false;
-      }
-
-      const resourceMetadata =
-        manifest?.artifacts?.WebsiteStack?.metadata?.[`/${resourcePath}`];
-      return resourceMetadata !== undefined;
-    } catch (error) {
-      console.log("Error checking resource existence:", error);
-      return false;
     }
   }
 
