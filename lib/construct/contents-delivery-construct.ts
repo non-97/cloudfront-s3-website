@@ -11,7 +11,6 @@ import { BucketConstruct } from "./bucket-construct";
 import { HostedZoneConstruct } from "./hosted-zone-construct";
 import { CertificateConstruct } from "./certificate-construct";
 import * as path from "path";
-import * as fs from "fs";
 
 export interface ContentsDeliveryConstructProps
   extends ContentsDeliveryProperty,
@@ -371,8 +370,6 @@ export class ContentsDeliveryConstruct extends Construct {
         .defaultChild as cdk.aws_cloudfront.CfnDistribution;
       cfnDistribution.addPropertyDeletionOverride("DistributionConfig.Logging");
 
-      const logPrefix = this.getStandardLogV2Prefix(props.logFilePrefix);
-
       props.cloudFrontAccessLogBucketConstruct.bucket.addToResourcePolicy(
         new cdk.aws_iam.PolicyStatement({
           actions: ["s3:PutObject"],
@@ -381,7 +378,9 @@ export class ContentsDeliveryConstruct extends Construct {
             new cdk.aws_iam.ServicePrincipal("delivery.logs.amazonaws.com"),
           ],
           resources: [
-            `${props.cloudFrontAccessLogBucketConstruct.bucket.bucketArn}/${logPrefix.awsLogObjectPrefix}*`,
+            `${
+              props.cloudFrontAccessLogBucketConstruct.bucket.bucketArn
+            }/AWSLogs/${cdk.Stack.of(this).account}/CloudFront/*`,
           ],
           conditions: {
             StringEquals: {
@@ -399,6 +398,7 @@ export class ContentsDeliveryConstruct extends Construct {
 
       const cloudFrontStandardLogDeliverySourceName = `cf-${this.distribution.distributionId}`;
       const cloudFrontStandardLogDeliveryDestinationName = `cf-${this.distribution.distributionId}-s3`;
+      const logPrefix = this.getStandardLogV2Prefix(props.logFilePrefix);
 
       const cloudFrontStandardLogDeliverySource =
         new cdk.aws_logs.CfnDeliverySource(
@@ -418,70 +418,17 @@ export class ContentsDeliveryConstruct extends Construct {
           {
             name: cloudFrontStandardLogDeliveryDestinationName,
             outputFormat: "parquet",
-            destinationResourceArn:
-              props.cloudFrontAccessLogBucketConstruct.bucket.bucketArn,
+            destinationResourceArn: `${props.cloudFrontAccessLogBucketConstruct.bucket.bucketArn}/AWSLogs`,
           }
         );
 
-      new cdk.custom_resources.AwsCustomResource(
-        this,
-        "CloudFrontStandardLogDelivery",
-        {
-          logRetention: cdk.aws_logs.RetentionDays.ONE_WEEK,
-          serviceTimeout: cdk.Duration.seconds(180),
-          timeout: cdk.Duration.seconds(120),
-          installLatestAwsSdk: true,
-          onCreate: {
-            action: "createDelivery",
-            parameters: {
-              deliverySourceName: cloudFrontStandardLogDeliverySource.name,
-              deliveryDestinationArn:
-                cloudFrontStandardLogDeliveryDestination.attrArn,
-              s3EnableHiveCompatiblePath: false,
-              s3DeliveryConfiguration: {
-                enableHiveCompatiblePath: false,
-                suffixPath: logPrefix.logPrefix.split(
-                  logPrefix.awsLogObjectPrefix
-                )[1],
-              },
-            },
-            physicalResourceId:
-              cdk.custom_resources.PhysicalResourceId.fromResponse(
-                "delivery.id"
-              ),
-            service: "CloudWatchLogs",
-          },
-          onUpdate: {
-            action: "updateDeliveryConfiguration",
-            parameters: {
-              id: new cdk.custom_resources.PhysicalResourceIdReference(),
-              s3EnableHiveCompatiblePath: false,
-              s3DeliveryConfiguration: {
-                enableHiveCompatiblePath: false,
-                suffixPath: logPrefix.logPrefix,
-              },
-            },
-            service: "CloudWatchLogs",
-          },
-          onDelete: {
-            action: "deleteDelivery",
-            parameters: {
-              id: new cdk.custom_resources.PhysicalResourceIdReference(),
-            },
-            service: "CloudWatchLogs",
-          },
-          policy: cdk.custom_resources.AwsCustomResourcePolicy.fromStatements([
-            new cdk.aws_iam.PolicyStatement({
-              actions: [
-                "logs:CreateDelivery",
-                "logs:DeleteDelivery",
-                "logs:UpdateDeliveryConfiguration",
-              ],
-              resources: ["*"],
-            }),
-          ]),
-        }
-      );
+      new cdk.aws_logs.CfnDelivery(this, "CloudFrontStandardLogDelivery", {
+        deliverySourceName: cloudFrontStandardLogDeliverySource.name,
+        deliveryDestinationArn:
+          cloudFrontStandardLogDeliveryDestination.attrArn,
+        s3EnableHiveCompatiblePath: false,
+        s3SuffixPath: logPrefix,
+      });
     }
   }
 
@@ -512,24 +459,14 @@ export class ContentsDeliveryConstruct extends Construct {
   /**
    * Format log object prefix with AWS Logs prefix
    */
-  private getStandardLogV2Prefix(logFilePrefix: string | undefined): {
-    awsLogObjectPrefix: string;
-    logPrefix: string;
-  } {
-    const AWS_LOG_OBJECT_PREFIX = `AWSLogs/${
+  private getStandardLogV2Prefix(logObjectPrefix: string | undefined): string {
+    const LOG_OBJECT_PATH = `${
       cdk.Stack.of(this).account
-    }/CloudFront/`;
-    const LOG_OBJECT_PATH = "{DistributionId}/{yyyy}/{MM}/{dd}/{HH}";
+    }/CloudFront/{DistributionId}/{yyyy}/{MM}/{dd}/{HH}`;
 
-    const logPath = logFilePrefix
-      ? `${logFilePrefix}/${LOG_OBJECT_PATH}`
+    return logObjectPrefix
+      ? `${logObjectPrefix}/${LOG_OBJECT_PATH}`
       : LOG_OBJECT_PATH;
-
-    const logPrefix = logPath.startsWith(AWS_LOG_OBJECT_PREFIX)
-      ? logPath
-      : `${AWS_LOG_OBJECT_PREFIX}${logPath}`;
-
-    return { awsLogObjectPrefix: AWS_LOG_OBJECT_PREFIX, logPrefix };
   }
 
   private configureMoveLogLambdaPermissions(
