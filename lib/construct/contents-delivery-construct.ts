@@ -1,5 +1,3 @@
-// 修正2
-
 import * as cdk from "aws-cdk-lib";
 import { Construct } from "constructs";
 import {
@@ -78,6 +76,18 @@ export class ContentsDeliveryConstruct extends Construct {
               runtime: cdk.aws_cloudfront.FunctionRuntime.JS_2_0,
             })
           : undefined,
+      normalizeWebpCacheKeyCF2:
+        props.enableRewriteToWebp === "cf2LambdaEdge"
+          ? new cdk.aws_cloudfront.Function(this, "NormalizeWebpCacheKeyCF2", {
+              code: cdk.aws_cloudfront.FunctionCode.fromFile({
+                filePath: path.join(
+                  __dirname,
+                  "../src/cf2/normalize-webp-cache-key/index.js"
+                ),
+              }),
+              runtime: cdk.aws_cloudfront.FunctionRuntime.JS_2_0,
+            })
+          : undefined,
     };
   }
 
@@ -96,7 +106,9 @@ export class ContentsDeliveryConstruct extends Construct {
       rewriteToWebpLambdaEdge: this.createLambdaEdgeFunction({
         functionName: "RewriteToWebpLambdaEdge",
         entry: "../src/lambda/rewrite-to-webp/index.ts",
-        enabled: props.enableRewriteToWebp === "lambdaEdge",
+        enabled:
+          props.enableRewriteToWebp === "lambdaEdge" ||
+          props.enableRewriteToWebp === "cf2LambdaEdge",
         additionalPermissions: (role) =>
           this.configureRewriteToWebpPermissions(props, role),
       }),
@@ -106,7 +118,8 @@ export class ContentsDeliveryConstruct extends Construct {
   private isLambdaEdgeEnabled(props: ContentsDeliveryConstructProps): boolean {
     return (
       props.enableDirectoryIndex === "lambdaEdge" ||
-      props.enableRewriteToWebp === "lambdaEdge"
+      props.enableRewriteToWebp === "lambdaEdge" ||
+      props.enableRewriteToWebp === "cf2LambdaEdge"
     );
   }
 
@@ -257,6 +270,25 @@ export class ContentsDeliveryConstruct extends Construct {
     });
   }
 
+  private createViewerAcceptWebpCachePolicy() {
+    return new cdk.aws_cloudfront.CachePolicy(
+      this,
+      "ViewerAcceptWebpCachePolicy",
+      {
+        defaultTtl: cdk.Duration.days(1),
+        minTtl: cdk.Duration.seconds(1),
+        maxTtl: cdk.Duration.days(7),
+        cookieBehavior: cdk.aws_cloudfront.CacheCookieBehavior.none(),
+        headerBehavior: cdk.aws_cloudfront.CacheHeaderBehavior.allowList(
+          "x-viewer-accept-webp"
+        ),
+        queryStringBehavior: cdk.aws_cloudfront.CacheQueryStringBehavior.none(),
+        enableAcceptEncodingGzip: true,
+        enableAcceptEncodingBrotli: true,
+      }
+    );
+  }
+
   private getImageBehaviorOptions(
     functions: ReturnType<typeof this.createCF2> &
       ReturnType<typeof this.createLambdaEdgeFunctions>
@@ -264,7 +296,11 @@ export class ContentsDeliveryConstruct extends Construct {
     return {
       allowedMethods: cdk.aws_cloudfront.AllowedMethods.ALLOW_GET_HEAD,
       cachedMethods: cdk.aws_cloudfront.CachedMethods.CACHE_GET_HEAD,
-      cachePolicy: this.createAcceptCachePolicy(),
+      cachePolicy: functions.rewriteToWebpCF2
+        ? this.createAcceptCachePolicy()
+        : functions.normalizeWebpCacheKeyCF2
+        ? this.createViewerAcceptWebpCachePolicy()
+        : cdk.aws_cloudfront.CachePolicy.CACHING_OPTIMIZED,
       originRequestPolicy:
         cdk.aws_cloudfront.OriginRequestPolicy.ALL_VIEWER_EXCEPT_HOST_HEADER,
       viewerProtocolPolicy:
@@ -275,6 +311,13 @@ export class ContentsDeliveryConstruct extends Construct {
         ? [
             {
               function: functions.rewriteToWebpCF2,
+              eventType: cdk.aws_cloudfront.FunctionEventType.VIEWER_REQUEST,
+            },
+          ]
+        : functions.normalizeWebpCacheKeyCF2
+        ? [
+            {
+              function: functions.normalizeWebpCacheKeyCF2,
               eventType: cdk.aws_cloudfront.FunctionEventType.VIEWER_REQUEST,
             },
           ]
