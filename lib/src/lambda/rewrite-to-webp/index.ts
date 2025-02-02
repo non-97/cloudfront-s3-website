@@ -22,25 +22,10 @@ export const handler = async (event: CloudFrontRequestEvent) => {
 
   // Check WebP support using case-insensitive header check
   const acceptHeader = request.headers["accept"]?.[0]?.value ?? "";
-  const viewerAcceptWebP = acceptHeader.split(",").some((type) => {
-    const [mimeType, params = ""] = type.trim().split(";");
-
-    if (mimeType === "image/webp") {
-      return true;
-    }
-
-    const qMatch = params.match(/q=([0-9.]+)/);
-    const q = qMatch ? parseFloat(qMatch[1]) : 1.0;
-
-    if (q < 1) {
-      return false;
-    }
-
-    return mimeType === "*/*" || mimeType === "image/*";
-  });
+  const supportsWebP = acceptHeader.toLowerCase().includes("image/webp");
 
   // Process if the request is for an image and browser supports WebP
-  if (viewerAcceptWebP && IMAGE_EXTENSION_PATTERN.test(uri)) {
+  if (supportsWebP && IMAGE_EXTENSION_PATTERN.test(uri)) {
     // Extract bucket information from origin
     const s3Origin = request.origin?.s3;
     if (!s3Origin?.domainName) {
