@@ -8,6 +8,7 @@ import {
 import { BucketConstruct } from "./bucket-construct";
 import { HostedZoneConstruct } from "./hosted-zone-construct";
 import { CertificateConstruct } from "./certificate-construct";
+import { WafConstruct } from "./waf-construct";
 import * as path from "path";
 
 export interface ContentsDeliveryConstructProps
@@ -18,6 +19,7 @@ export interface ContentsDeliveryConstructProps
   cloudFrontAccessLogBucketConstruct?: BucketConstruct;
   hostedZoneConstruct?: HostedZoneConstruct;
   certificateConstruct?: CertificateConstruct;
+  wafConstruct?: WafConstruct;
 }
 
 export class ContentsDeliveryConstruct extends Construct {
@@ -216,6 +218,7 @@ export class ContentsDeliveryConstruct extends Construct {
         : undefined,
       logBucket: props.cloudFrontAccessLogBucketConstruct?.bucket,
       logFilePrefix: props.logFilePrefix,
+      webAclId: props.wafConstruct?.webAcl.attrArn,
     });
 
     this.addImageBehaviors(distribution, functions);
