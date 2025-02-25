@@ -60,7 +60,7 @@ export class WafConstruct extends Construct {
                       priority: 0,
                     },
                   ],
-                  regexString: ".*/$|^$",
+                  regexString: ".*/$|^[^.]*$|^.*[^.]/[^.]*$",
                 },
               },
             },
