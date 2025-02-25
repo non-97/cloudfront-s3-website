@@ -3,6 +3,7 @@ import { Construct } from "constructs";
 import { WebsiteProperty, LogType } from "../parameter/index";
 import { HostedZoneConstruct } from "./construct/hosted-zone-construct";
 import { CertificateConstruct } from "./construct/certificate-construct";
+import { WafConstruct } from "./construct/waf-construct";
 import { BucketConstruct } from "./construct/bucket-construct";
 import { ContentsDeliveryConstruct } from "./construct/contents-delivery-construct";
 import { LogAnalyticsConstruct } from "./construct/log-analytics-construct";
@@ -25,6 +26,13 @@ export class WebsiteStack extends cdk.Stack {
       ? new CertificateConstruct(this, "CertificateConstruct", {
           ...props.certificate,
           hostedZoneConstruct,
+        })
+      : undefined;
+
+    // WAF
+    const wafConstruct = props.waf
+      ? new WafConstruct(this, "WafConstruct", {
+          ...props.waf,
         })
       : undefined;
 
@@ -68,6 +76,7 @@ export class WebsiteStack extends cdk.Stack {
         cloudFrontAccessLogBucketConstruct,
         hostedZoneConstruct,
         certificateConstruct,
+        wafConstruct,
         ...props.contentsDelivery,
         ...props.cloudFrontAccessLog,
         ...props.logAnalytics,

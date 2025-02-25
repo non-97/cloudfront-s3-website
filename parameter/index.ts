@@ -34,6 +34,10 @@ export interface CertificateProperty {
   certificateDomainName?: string;
 }
 
+export interface WafProperty {
+  webAclName: string;
+}
+
 export interface ContentsDeliveryProperty {
   domainName?: string;
   contentsPath?: string;
@@ -45,6 +49,7 @@ export interface ContentsDeliveryProperty {
 export interface WebsiteProperty {
   hostedZone?: HostZoneProperty;
   certificate?: CertificateProperty;
+  waf?: WafProperty;
   contentsDelivery?: ContentsDeliveryProperty;
   allowDeleteBucketAndObjects?: boolean;
   s3ServerAccessLog?: AccessLog;
@@ -69,6 +74,7 @@ export const websiteStackProperty: WebSiteStackProperty = {
     certificate: {
       certificateDomainName: "www.non-97.net",
     },
+    waf: { webAclName: "website" },
     contentsDelivery: {
       domainName: "www.non-97.net",
       contentsPath: path.join(__dirname, "../lib/src/contents"),
