@@ -169,6 +169,9 @@ export class ContentsDeliveryConstruct extends Construct {
       timeout: cdk.Duration.seconds(5),
       role: role,
       entry: path.join(__dirname, entry),
+      loggingFormat: cdk.aws_lambda.LoggingFormat.JSON,
+      applicationLogLevelV2: cdk.aws_lambda.ApplicationLogLevel.INFO,
+      systemLogLevelV2: cdk.aws_lambda.SystemLogLevel.INFO,
     });
   }
 
