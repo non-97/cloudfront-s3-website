@@ -168,6 +168,11 @@ export class WafConstruct extends Construct {
                   Action: "COUNT",
                 },
               },
+              {
+                ActionCondition: {
+                  Action: "EXCLUDED_AS_COUNT",
+                },
+              },
             ],
             Requirement: "MEETS_ANY",
           },

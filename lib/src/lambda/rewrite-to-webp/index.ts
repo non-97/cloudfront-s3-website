@@ -39,11 +39,23 @@ export const handler = async (event: CloudFrontRequestEvent) => {
     return mimeType === "*/*" || mimeType === "image/*";
   });
 
+  console.debug({
+    message: "WebP support check completed",
+    uri,
+    viewerAcceptWebP,
+    acceptHeader,
+  });
+
   // Process if the request is for an image and browser supports WebP
   if (viewerAcceptWebP && IMAGE_EXTENSION_PATTERN.test(uri)) {
     // Extract bucket information from origin
     const s3Origin = request.origin?.s3;
     if (!s3Origin?.domainName) {
+      console.debug({
+        message: "S3 origin not found",
+        uri,
+      });
+
       return request;
     }
 
@@ -69,20 +81,41 @@ export const handler = async (event: CloudFrontRequestEvent) => {
         },
       ];
       request.uri = `${uri}.webp`;
+
+      console.debug({
+        message: "WebP version found and request modified",
+        originalUri: uri,
+        newUri: request.uri,
+      });
     } catch (error) {
       if (error instanceof NotFound) {
         // WebP file doesn't exist, silently use original image
+        console.debug({
+          message: "WebP version not found, using original image",
+          uri,
+          webpKey,
+        });
         return request;
       }
 
       // Log other errors
-      console.error("Error checking WebP existence:", {
+      console.error({
+        message: "Error checking WebP existence",
         region: process.env.AWS_REGION,
         bucket: bucketName,
         key: webpKey,
-        error: error as S3ServiceException,
+        error: error instanceof Error ? error.message : String(error),
+        errorStack: error instanceof Error ? error.stack : undefined,
+        errorType: error instanceof S3ServiceException ? error.name : "Unknown",
       });
     }
+  } else {
+    console.debug({
+      message: "Skipping WebP processing",
+      uri,
+      isImage: IMAGE_EXTENSION_PATTERN.test(uri),
+      supportsWebP: viewerAcceptWebP,
+    });
   }
 
   return request;
